@@ -142,6 +142,20 @@ export default function ScanPage() {
       toast.success(`Berhasil ${scannedType.toUpperCase()}!`);
     }
   };
+const { data: reg } = await supabase
+  .from("event_registrations")
+  .select("payment_status")
+  .eq("event_id", eventId)
+  .eq("user_id", user.id)
+  .single();
+
+if (!reg) {
+  return toast.error("Anda belum terdaftar");
+}
+
+if (event.is_paid && reg.payment_status !== "paid") {
+  return toast.error("Pembayaran belum lunas");
+}
 
   return (
     <div className="relative min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-purple-100 to-purple-200 p-6">
