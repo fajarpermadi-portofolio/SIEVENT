@@ -28,7 +28,7 @@ export default function Register() {
 const { error } = await supabase.auth.signInWithOtp({
   email: emailClean,
   options: {
-    emailRedirectTo: "http://localhost:5173/auth/callback",
+    emailRedirectTo: `${window.location.origin}/auth/callback`,
     data: {
       name: name.trim(),
       npm: npm.trim(),
