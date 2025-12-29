@@ -59,12 +59,23 @@ export default function AdminEventDetail() {
       .eq("event_id", id);
     setRegistrations(regs || []);
 
-    const { data: cert } = await supabase
-      .from("certificates")
-      .select("*, users(name)")
-      .eq("event_id", id);
-    setCertificates(cert || []);
-  };
+const { data: cert, error } = await supabase
+  .from("certificates")
+  .select(`
+    id,
+    file_url,
+    created_at,
+    users(name, email),
+    event_registrations!inner(payment_status)
+  `)
+  .eq("event_id", id)
+  .eq("event_registrations.payment_status", "paid");
+
+if (error) {
+  toast.error("Gagal load sertifikat");
+} else {
+  setCertificates(cert || []);
+}
 
   useEffect(() => {
     loadAll();
