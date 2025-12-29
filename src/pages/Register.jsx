@@ -2,6 +2,7 @@ import { useState } from "react";
 import { supabase } from "../supabase";
 import { Link, useNavigate } from "react-router-dom";
 import Logo from "../assets/logo-hirosi.png";
+import { toast } from "react-hot-toast";
 
 export default function Register() {
   const navigate = useNavigate();
