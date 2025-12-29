@@ -19,67 +19,81 @@ export default function AdminEventDetail() {
   const [template, setTemplate] = useState(null);
   const [certificates, setCertificates] = useState([]);
 
-  // ============================
-  // LOAD ALL DATA
-  // ============================
-  const loadAll = async () => {
-    const { data: e } = await supabase
-      .from("events")
-      .select("*")
-      .eq("id", id)
-      .single();
-    setEvent(e);
+// ============================
+// LOAD ALL DATA
+// ============================
+const loadAll = async () => {
+  // EVENT
+  const { data: e } = await supabase
+    .from("events")
+    .select("*")
+    .eq("id", id)
+    .single();
+  setEvent(e);
 
-    const { data: tpl } = await supabase
-      .from("certificate_templates")
-      .select("*")
-      .eq("event_id", id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-    setTemplate(tpl || null);
+  // TEMPLATE
+  const { data: tpl } = await supabase
+    .from("certificate_templates")
+    .select("*")
+    .eq("event_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  setTemplate(tpl || null);
 
-    const { data: ci } = await supabase
-      .from("attendance")
-      .select("*, users(name, npm, email)")
-      .eq("event_id", id)
-      .eq("type", "checkin");
-    setCheckins(ci || []);
+  // CHECKIN
+  const { data: ci } = await supabase
+    .from("attendance")
+    .select("user_id, users(name, npm, email)")
+    .eq("event_id", id)
+    .eq("type", "checkin");
+  setCheckins(ci || []);
 
-    const { data: co } = await supabase
-      .from("attendance")
-      .select("*, users(name, npm, email)")
-      .eq("event_id", id)
-      .eq("type", "checkout");
-    setCheckouts(co || []);
+  // CHECKOUT
+  const { data: co } = await supabase
+    .from("attendance")
+    .select("user_id, users(name, npm, email)")
+    .eq("event_id", id)
+    .eq("type", "checkout");
+  setCheckouts(co || []);
 
-    const { data: regs } = await supabase
-      .from("event_registrations")
-      .select("id, created_at, user_id, users(name, npm, email)")
-      .eq("event_id", id);
-    setRegistrations(regs || []);
+  // REGISTRATIONS
+  const { data: regs } = await supabase
+    .from("event_registrations")
+    .select("id, user_id, users(name, npm, email), payment_status")
+    .eq("event_id", id);
+  setRegistrations(regs || []);
 
-const { data: cert, error } = await supabase
-  .from("certificates")
-  .select(`
-    id,
-    file_url,
-    created_at,
-    users(name, email),
-    event_registrations!inner(payment_status)
-  `)
-  .eq("event_id", id)
-  .eq("event_registrations.payment_status", "paid");
+  // CERTIFICATES (PAID ONLY)
+  const { data: cert, error } = await supabase
+    .from("certificates")
+    .select(`
+      id,
+      file_url,
+      created_at,
+      user_id,
+      users(name, email)
+    `)
+    .eq("event_id", id);
 
-if (error) {
-  toast.error("Gagal load sertifikat");
-} else {
-  setCertificates(cert || []);
-}
+  if (error) {
+    toast.error("Gagal load sertifikat");
+  } else {
+    // filter payment_status dari registrations
+    const paidUserIds = regs
+      ?.filter(r => r.payment_status === "paid")
+      .map(r => r.user_id);
 
+    const filtered = cert?.filter(c =>
+      paidUserIds?.includes(c.user_id)
+    );
+
+    setCertificates(filtered || []);
+  }
+};
   useEffect(() => {
-    loadAll();
-  }, [id]);
+  loadAll();
+}, [id]);
 
   // ============================
   // GENERATE SINGLE CERTIFICATE
