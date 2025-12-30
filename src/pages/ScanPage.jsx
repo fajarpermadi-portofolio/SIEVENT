@@ -5,7 +5,7 @@ import { supabase } from "../supabase";
 import { toast } from "react-hot-toast";
 
 export default function ScanPage() {
-  const { eventId, type } = useParams();
+  const { eventId, type } = useParams(); // type = checkin / checkout
   const navigate = useNavigate();
   const scannerRef = useRef(null);
 
@@ -17,19 +17,18 @@ export default function ScanPage() {
   const [event, setEvent] = useState(null);
 
   // ===============================
-  // 🔐 INIT (USER + EVENT)
+  // 🔐 INIT USER & EVENT
   // ===============================
   useEffect(() => {
     const init = async () => {
-      // user
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) {
-        toast.error("Silakan login dulu");
-        return navigate("/auth/login");
+        toast.error("Silakan login terlebih dahulu");
+        navigate("/auth/login");
+        return;
       }
       setUser(auth.user);
 
-      // event
       const { data: ev } = await supabase
         .from("events")
         .select("id, name, is_paid")
@@ -38,7 +37,8 @@ export default function ScanPage() {
 
       if (!ev) {
         toast.error("Event tidak ditemukan");
-        return navigate("/");
+        navigate("/");
+        return;
       }
 
       setEvent(ev);
@@ -46,10 +46,10 @@ export default function ScanPage() {
     };
 
     init();
-  }, [eventId]);
+  }, [eventId, navigate]);
 
   // ===============================
-  // 🎥 START SCANNER
+  // 🎥 START SCANNER (REAR CAMERA)
   // ===============================
   useEffect(() => {
     if (loading || !user || !event) return;
@@ -57,22 +57,39 @@ export default function ScanPage() {
     const scanner = new Html5Qrcode("reader");
     scannerRef.current = scanner;
 
-    Html5Qrcode.getCameras().then((devices) => {
-      if (!devices.length) {
-        setStatus("Kamera tidak ditemukan");
-        return;
-      }
-
-      scanner.start(
-        devices[0].id,
-        { fps: 10, qrbox: 250 },
-        async (qrText) => {
-          scanner.pause();
-          setStatus("QR terdeteksi, memproses...");
-          await handleScan(qrText);
+    const startCamera = async () => {
+      try {
+        // ✅ PRIORITY: BACK CAMERA (HP)
+        await scanner.start(
+          { facingMode: { exact: "environment" } },
+          { fps: 10, qrbox: 260 },
+          async (qrText) => {
+            scanner.pause();
+            setStatus("QR terdeteksi, memproses...");
+            await handleScan(qrText);
+          }
+        );
+      } catch {
+        // 🔁 FALLBACK (Laptop / unsupported device)
+        const cameras = await Html5Qrcode.getCameras();
+        if (!cameras.length) {
+          setStatus("Kamera tidak ditemukan");
+          return;
         }
-      );
-    });
+
+        await scanner.start(
+          cameras[0].id,
+          { fps: 10, qrbox: 260 },
+          async (qrText) => {
+            scanner.pause();
+            setStatus("QR terdeteksi, memproses...");
+            await handleScan(qrText);
+          }
+        );
+      }
+    };
+
+    startCamera();
 
     return () => {
       scanner.stop().catch(() => {});
@@ -83,15 +100,14 @@ export default function ScanPage() {
   // 🧠 HANDLE QR
   // ===============================
   const handleScan = async (qrText) => {
-    // QR DINAMIS
+    // QR DINAMIS (UUID)
     if (qrText.length === 36 && qrText.includes("-")) {
       return processDynamicToken(qrText);
     }
 
     // QR STATIS
     if (!qrText.startsWith("HIROSI_EVENT:")) {
-      toast.error("QR tidak valid");
-      return resume();
+      return fail("QR tidak valid");
     }
 
     const [, scannedEventId, scannedType] = qrText.split(":");
@@ -106,7 +122,7 @@ export default function ScanPage() {
   };
 
   // ===============================
-  // 🔐 VALIDASI DINAMIS
+  // 🔐 VALIDASI TOKEN DINAMIS
   // ===============================
   const processDynamicToken = async (token) => {
     const { data } = await supabase
@@ -123,14 +139,14 @@ export default function ScanPage() {
     if (String(data.event_id) !== String(eventId))
       return fail("Token bukan untuk event ini");
 
-    if (data.type !== type)
+    if (data.attendance_type !== type)
       return fail("Token tidak sesuai");
 
     await validateAndSave();
   };
 
   // ===============================
-  // 🔒 VALIDASI REGISTRASI + PAYMENT
+  // 🔒 VALIDASI REGISTRASI & PAYMENT
   // ===============================
   const validateAndSave = async () => {
     const { data: reg } = await supabase
@@ -149,13 +165,13 @@ export default function ScanPage() {
   };
 
   // ===============================
-  // 📝 SIMPAN ABSENSI
+  // 📝 SIMPAN ABSENSI (FIX COLUMN)
   // ===============================
   const saveAttendance = async () => {
     const { error } = await supabase.from("attendance").insert({
       user_id: user.id,
       event_id: eventId,
-      type,
+      attendance_type: type, // ✅ FIX
     });
 
     if (error) {
