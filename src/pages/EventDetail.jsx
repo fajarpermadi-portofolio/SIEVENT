@@ -10,71 +10,74 @@ export default function EventDetail() {
 
   const [event, setEvent] = useState(null);
   const [user, setUser] = useState(null);
-  const [registered, setRegistered] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState(null);
+  const [registration, setRegistration] = useState(null);
   const [attendance, setAttendance] = useState({
     checkin: null,
     checkout: null,
   });
-  const [loadingReg, setLoadingReg] = useState(false);
 
-  // =====================================================
-  // INIT
-  // =====================================================
+  const [loading, setLoading] = useState(true);
+  const [loadingPay, setLoadingPay] = useState(false);
+
   useEffect(() => {
-    initPage();
+    loadPage();
   }, []);
 
-  const initPage = async () => {
+  const loadPage = async () => {
     await loadUser();
     await loadEvent();
+    await loadRegistration();
+    await loadAttendance();
+    setLoading(false);
   };
 
-  // =====================================================
-  // LOAD USER
-  // =====================================================
+  // ================= USER =================
   const loadUser = async () => {
     const { data } = await supabase.auth.getUser();
     setUser(data.user || null);
   };
 
-  // =====================================================
-  // LOAD EVENT + REGISTRATION
-  // =====================================================
+  // ================= EVENT =================
   const loadEvent = async () => {
-    const { data: ev } = await supabase
+    const { data, error } = await supabase
       .from("events")
       .select("*")
       .eq("id", id)
       .single();
 
-    setEvent(ev);
+    if (error) {
+      toast.error("Event tidak ditemukan");
+      navigate("/");
+      return;
+    }
 
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) return;
+    setEvent(data);
+  };
+
+  // ================= REGISTRATION =================
+  const loadRegistration = async () => {
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) return;
 
     const { data: reg } = await supabase
       .from("event_registrations")
-      .select("payment_status")
-      .eq("user_id", auth.user.id)
+      .select("*")
+      .eq("user_id", data.user.id)
       .eq("event_id", id)
       .maybeSingle();
 
-    if (reg) {
-      setRegistered(true);
-      setPaymentStatus(reg.payment_status);
-      await loadAttendance(auth.user.id);
-    }
+    setRegistration(reg || null);
   };
 
-  // =====================================================
-  // LOAD ATTENDANCE
-  // =====================================================
-  const loadAttendance = async (userId) => {
+  // ================= ATTENDANCE =================
+  const loadAttendance = async () => {
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) return;
+
     const { data: ci } = await supabase
       .from("attendance")
       .select("*")
-      .eq("user_id", userId)
+      .eq("user_id", data.user.id)
       .eq("event_id", id)
       .eq("type", "checkin")
       .order("created_at", { ascending: false })
@@ -83,7 +86,7 @@ export default function EventDetail() {
     const { data: co } = await supabase
       .from("attendance")
       .select("*")
-      .eq("user_id", userId)
+      .eq("user_id", data.user.id)
       .eq("event_id", id)
       .eq("type", "checkout")
       .order("created_at", { ascending: false })
@@ -95,84 +98,62 @@ export default function EventDetail() {
     });
   };
 
-  // =====================================================
-  // REGISTER (FREE EVENT)
-  // =====================================================
+  // ================= REGISTER (FREE) =================
   const handleRegisterFree = async () => {
-    if (!user) return toast.error("Harap login terlebih dahulu");
-
-    setLoadingReg(true);
+    if (!user) return toast.error("Silakan login terlebih dahulu");
 
     const { error } = await supabase.from("event_registrations").insert({
       user_id: user.id,
       event_id: id,
-      payment_status: "free",
+      payment_status: "paid",
     });
 
-    setLoadingReg(false);
-
     if (error) {
-      toast.error("Anda sudah terdaftar.");
+      toast.error("Anda sudah terdaftar");
       return;
     }
 
     toast.success("Berhasil mendaftar event!");
-    setRegistered(true);
-    setPaymentStatus("free");
+    loadRegistration();
   };
 
-  // =====================================================
-  // PAY & REGISTER (PAID EVENT)
-  // =====================================================
-  const payAndRegister = async () => {
-    if (!user) return toast.error("Harap login terlebih dahulu");
+  // ================= PAY (PAID EVENT) =================
+  const handlePayment = async () => {
+    if (!user) return toast.error("Silakan login");
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    setLoadingPay(true);
 
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment`,
+    const { data, error } = await supabase.functions.invoke(
+      "create-payment",
       {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
+        body: {
+          event_id: id,
+          amount: event.price,
         },
-        body: JSON.stringify({
-          event_id: event.id,
-        }),
       }
     );
 
-    const data = await res.json();
+    setLoadingPay(false);
 
-    if (!data.snapToken) {
-      toast.error("Gagal memulai pembayaran");
+    if (error) {
+      toast.error("Gagal membuat pembayaran");
       return;
     }
 
-    window.snap.pay(data.snapToken, {
-      onSuccess: () => {
-        toast.success("Pembayaran berhasil");
-        setRegistered(true);
-        setPaymentStatus("paid");
-      },
-      onPending: () => toast("Menunggu pembayaran"),
-      onError: () => toast.error("Pembayaran gagal"),
-    });
+    window.location.href = data.payment_url;
   };
 
-  // =====================================================
-  // UI
-  // =====================================================
-  if (!event) {
+  if (loading || !event) {
     return (
       <div className="py-32 text-center text-slate-500">
-        Memuat data event...
+        Memuat event...
       </div>
     );
   }
+
+  const isPaidEvent = event.price && event.price > 0;
+  const isRegistered = !!registration;
+  const isPaid = registration?.payment_status === "paid";
 
   return (
     <div className="min-h-screen bg-slate-100 px-6 py-10">
@@ -188,87 +169,93 @@ export default function EventDetail() {
         )}
 
         {/* INFO */}
-        <h1 className="text-5xl font-extrabold">{event.name}</h1>
-        <p className="text-lg text-slate-600">
-          {event.date} • {event.start_time} • {event.location}
-        </p>
+        <div className="space-y-3">
+          <h1 className="text-4xl font-extrabold text-slate-900">
+            {event.name}
+          </h1>
 
-        {event.description && (
-          <p className="text-lg text-slate-700 max-w-3xl">
-            {event.description}
+          <p className="text-slate-600">
+            {event.date} • {event.start_time} • {event.location}
           </p>
-        )}
+
+          {event.description && (
+            <p className="text-slate-700 leading-relaxed">
+              {event.description}
+            </p>
+          )}
+
+          {isPaidEvent && (
+            <p className="text-xl font-bold text-green-700">
+              Harga: Rp {event.price.toLocaleString("id-ID")}
+            </p>
+          )}
+        </div>
 
         {/* STATUS */}
-        {registered && (
+        {isRegistered && (
           <div className="border-t pt-6 space-y-2">
             <p>
               <b>Status Pembayaran:</b>{" "}
-              <span className="font-semibold text-green-700">
-                {paymentStatus}
-              </span>
-            </p>
-
-            <p>
-              <b>Check-In:</b>{" "}
-              {attendance.checkin
-                ? new Date(attendance.checkin.created_at).toLocaleString()
-                : "Belum"}
-            </p>
-
-            <p>
-              <b>Check-Out:</b>{" "}
-              {attendance.checkout
-                ? new Date(attendance.checkout.created_at).toLocaleString()
-                : "Belum"}
+              {isPaid ? (
+                <span className="text-green-700 font-semibold">LUNAS</span>
+              ) : (
+                <span className="text-red-600 font-semibold">BELUM BAYAR</span>
+              )}
             </p>
           </div>
         )}
-{event.is_paid && (
-  <p className="text-lg font-semibold text-red-700">
-    Biaya Pendaftaran: Rp {event.price.toLocaleString("id-ID")}
-  </p>
-)}
 
         {/* ACTION */}
-        {!registered && (
-          <div className="pt-6">
-            {event.is_paid ? (
-              <button
-                onClick={payAndRegister}
-                className="px-8 py-4 bg-indigo-700 text-white font-semibold"
-              >
-                Bayar & Daftar Event
-              </button>
-            ) : (
-              <button
-                onClick={handleRegisterFree}
-                disabled={loadingReg}
-                className="px-8 py-4 bg-slate-900 text-white font-semibold"
-              >
-                {loadingReg ? "Memproses..." : "Daftar Event"}
-              </button>
-            )}
-          </div>
-        )}
+        <div className="border-t pt-6 space-y-4">
 
-        {registered && (
-          <div className="flex gap-4 pt-6">
+          {!isRegistered && !isPaidEvent && (
             <button
-              onClick={() => navigate(`/scan/${id}/checkin`)}
+              onClick={handleRegisterFree}
+              className="px-8 py-4 bg-slate-900 text-white font-semibold"
+            >
+              Daftar Event
+            </button>
+          )}
+
+          {!isRegistered && isPaidEvent && (
+            <button
+              onClick={handlePayment}
+              disabled={loadingPay}
               className="px-8 py-4 bg-green-700 text-white font-semibold"
             >
-              Scan Check-In
+              {loadingPay ? "Memproses..." : "Bayar & Daftar"}
             </button>
+          )}
 
+          {isRegistered && !isPaid && isPaidEvent && (
             <button
-              onClick={() => navigate(`/scan/${id}/checkout`)}
+              onClick={handlePayment}
+              disabled={loadingPay}
               className="px-8 py-4 bg-red-700 text-white font-semibold"
             >
-              Scan Check-Out
+              {loadingPay ? "Memproses..." : "Selesaikan Pembayaran"}
             </button>
-          </div>
-        )}
+          )}
+
+          {isRegistered && isPaid && (
+            <div className="flex gap-4">
+              <button
+                onClick={() => navigate(`/scan/${id}/checkin`)}
+                className="px-8 py-4 bg-green-700 text-white font-semibold"
+              >
+                Scan Check-In
+              </button>
+
+              <button
+                onClick={() => navigate(`/scan/${id}/checkout`)}
+                className="px-8 py-4 bg-red-700 text-white font-semibold"
+              >
+                Scan Check-Out
+              </button>
+            </div>
+          )}
+        </div>
+
       </div>
     </div>
   );
