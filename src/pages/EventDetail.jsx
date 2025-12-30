@@ -19,34 +19,33 @@ export default function EventDetail() {
   const [loading, setLoading] = useState(true);
   const [loadingPay, setLoadingPay] = useState(false);
 
-  // =====================================================
-  // INIT
-  // =====================================================
+  // ================= INIT =================
   useEffect(() => {
     init();
-  }, []);
+  }, [id]);
 
   const init = async () => {
-    await Promise.all([
-      loadUser(),
-      loadEvent(),
-    ]);
-    await loadRegistration();
-    await loadAttendance();
+    setLoading(true);
+
+    const currentUser = await loadUser();
+    await loadEvent();
+
+    if (currentUser) {
+      await loadRegistration(currentUser.id);
+      await loadAttendance(currentUser.id);
+    }
+
     setLoading(false);
   };
 
-  // =====================================================
-  // USER
-  // =====================================================
+  // ================= USER =================
   const loadUser = async () => {
     const { data } = await supabase.auth.getUser();
     setUser(data.user || null);
+    return data.user || null;
   };
 
-  // =====================================================
-  // EVENT
-  // =====================================================
+  // ================= EVENT =================
   const loadEvent = async () => {
     const { data, error } = await supabase
       .from("events")
@@ -63,33 +62,25 @@ export default function EventDetail() {
     setEvent(data);
   };
 
-  // =====================================================
-  // REGISTRATION
-  // =====================================================
-  const loadRegistration = async () => {
-    if (!user) return;
-
+  // ================= REGISTRATION =================
+  const loadRegistration = async (userId) => {
     const { data } = await supabase
       .from("event_registrations")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("event_id", id)
       .maybeSingle();
 
     setRegistration(data || null);
   };
 
-  // =====================================================
-  // ATTENDANCE
-  // =====================================================
-  const loadAttendance = async () => {
-    if (!user) return;
-
+  // ================= ATTENDANCE =================
+  const loadAttendance = async (userId) => {
     const [ci, co] = await Promise.all([
       supabase
         .from("attendance")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .eq("event_id", id)
         .eq("type", "checkin")
         .order("created_at", { ascending: false })
@@ -98,7 +89,7 @@ export default function EventDetail() {
       supabase
         .from("attendance")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .eq("event_id", id)
         .eq("type", "checkout")
         .order("created_at", { ascending: false })
@@ -111,16 +102,14 @@ export default function EventDetail() {
     });
   };
 
-  // =====================================================
-  // REGISTER FREE EVENT
-  // =====================================================
+  // ================= REGISTER FREE =================
   const handleRegisterFree = async () => {
     if (!user) return toast.error("Silakan login terlebih dahulu");
 
     const { error } = await supabase.from("event_registrations").insert({
       user_id: user.id,
       event_id: id,
-      payment_status: "paid", // free = langsung paid
+      payment_status: "paid",
     });
 
     if (error) {
@@ -129,15 +118,13 @@ export default function EventDetail() {
     }
 
     toast.success("Berhasil mendaftar event!");
-    await loadRegistration();
+    await loadRegistration(user.id);
   };
 
-  // =====================================================
-  // PAYMENT (PAID EVENT)
-  // =====================================================
+  // ================= PAYMENT =================
   const handlePayment = async () => {
     if (!user) return toast.error("Silakan login terlebih dahulu");
-    if (!event?.price || event.price <= 0) {
+    if (!event?.price || Number(event.price) <= 0) {
       toast.error("Harga event tidak valid");
       return;
     }
@@ -145,11 +132,6 @@ export default function EventDetail() {
     setLoadingPay(true);
 
     try {
-      console.log("PAYLOAD:", {
-        event_id: id,
-        amount: Number(event.price),
-      });
-
       const { data, error } = await supabase.functions.invoke(
         "create-payment",
         {
@@ -160,10 +142,7 @@ export default function EventDetail() {
         }
       );
 
-      if (error) {
-        throw error;
-      }
-
+      if (error) throw error;
       if (!data?.payment_url) {
         throw new Error("Payment URL tidak tersedia");
       }
@@ -177,9 +156,7 @@ export default function EventDetail() {
     }
   };
 
-  // =====================================================
-  // RENDER
-  // =====================================================
+  // ================= RENDER =================
   if (loading || !event) {
     return (
       <div className="py-32 text-center text-slate-500">
@@ -196,7 +173,6 @@ export default function EventDetail() {
     <div className="min-h-screen bg-slate-100 px-6 py-10">
       <div className="max-w-5xl mx-auto space-y-8">
 
-        {/* POSTER */}
         {event.pamphlet_url && (
           <img
             src={event.pamphlet_url}
@@ -205,47 +181,24 @@ export default function EventDetail() {
           />
         )}
 
-        {/* INFO */}
-        <div className="space-y-3">
-          <h1 className="text-4xl font-extrabold text-slate-900">
-            {event.name}
-          </h1>
-
+        <div>
+          <h1 className="text-4xl font-extrabold">{event.name}</h1>
           <p className="text-slate-600">
             {event.date} • {event.start_time || "-"} • {event.location}
           </p>
 
           {event.description && (
-            <p className="text-slate-700 leading-relaxed">
-              {event.description}
-            </p>
+            <p className="mt-3 text-slate-700">{event.description}</p>
           )}
 
           {isPaidEvent && (
-            <p className="text-xl font-bold text-green-700">
+            <p className="mt-4 text-xl font-bold text-green-700">
               Harga: Rp {Number(event.price).toLocaleString("id-ID")}
             </p>
           )}
         </div>
 
-        {/* STATUS */}
-        {isRegistered && (
-          <div className="border-t pt-6 space-y-2">
-            <p>
-              <b>Status Pembayaran:</b>{" "}
-              {isPaid ? (
-                <span className="text-green-700 font-semibold">LUNAS</span>
-              ) : (
-                <span className="text-red-600 font-semibold">BELUM BAYAR</span>
-              )}
-            </p>
-          </div>
-        )}
-
-        {/* ACTION */}
         <div className="border-t pt-6 space-y-4">
-
-          {/* FREE EVENT */}
           {!isRegistered && !isPaidEvent && (
             <button
               onClick={handleRegisterFree}
@@ -255,7 +208,6 @@ export default function EventDetail() {
             </button>
           )}
 
-          {/* PAID EVENT – FIRST PAYMENT */}
           {!isRegistered && isPaidEvent && (
             <button
               onClick={handlePayment}
@@ -266,7 +218,6 @@ export default function EventDetail() {
             </button>
           )}
 
-          {/* PAID EVENT – RETRY PAYMENT */}
           {isRegistered && !isPaid && isPaidEvent && (
             <button
               onClick={handlePayment}
@@ -277,7 +228,6 @@ export default function EventDetail() {
             </button>
           )}
 
-          {/* AFTER PAID */}
           {isRegistered && isPaid && (
             <div className="flex gap-4">
               <button
@@ -286,7 +236,6 @@ export default function EventDetail() {
               >
                 Scan Check-In
               </button>
-
               <button
                 onClick={() => navigate(`/scan/${id}/checkout`)}
                 className="px-8 py-4 bg-red-700 text-white font-semibold"
@@ -296,7 +245,6 @@ export default function EventDetail() {
             </div>
           )}
         </div>
-
       </div>
     </div>
   );
