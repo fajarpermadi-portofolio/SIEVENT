@@ -37,13 +37,13 @@ export default function AdminDashboard() {
           .from("attendance")
           .select("id")
           .eq("event_id", ev.id)
-          .eq("type", "checkin");
+          .eq("attendance_type", "checkin");
 
         const { data: co } = await supabase
           .from("attendance")
           .select("id")
           .eq("event_id", ev.id)
-          .eq("type", "checkout");
+          .eq("attendance_type", "checkout");
 
         return {
           ...ev,
