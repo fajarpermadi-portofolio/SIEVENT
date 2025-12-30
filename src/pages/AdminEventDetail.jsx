@@ -207,14 +207,18 @@ const { data: co } = await supabase
 <td className="text-center">
   {(() => {
     const ci = checkins.find(c => c.user_id === r.user_id);
-    return ci ? toWIB(ci.timestamp) : "—";
+    return ci
+      ? new Date(ci.timestamp).toLocaleString("id-ID")
+      : "—";
   })()}
 </td>
 
 <td className="text-center">
   {(() => {
     const co = checkouts.find(c => c.user_id === r.user_id);
-    return co ? toWIB(co.timestamp) : "—";
+    return co
+      ? new Date(co.timestamp).toLocaleString("id-ID")
+      : "—";
   })()}
 </td>
                   <td>{r.payment_status}</td>
