@@ -1,3 +1,4 @@
+// src/pages/AdminDashboard.jsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabase";
@@ -8,53 +9,69 @@ import {
   Users,
   CheckCircle2,
   LogOut,
-  Plus
+  Plus,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadEvents();
   }, []);
 
   const loadEvents = async () => {
-    const { data } = await supabase
+    setLoading(true);
+
+    const { data: eventsData, error } = await supabase
       .from("events")
       .select("*")
       .order("date", { ascending: true });
 
+    if (error) {
+      toast.error("Gagal memuat event");
+      setLoading(false);
+      return;
+    }
+
+    if (!eventsData || eventsData.length === 0) {
+      setEvents([]);
+      setLoading(false);
+      return;
+    }
+
     const enriched = await Promise.all(
-      data.map(async (ev) => {
-        const { data: regs } = await supabase
+      eventsData.map(async (ev) => {
+        const { count: regCount } = await supabase
           .from("event_registrations")
-          .select("id")
+          .select("id", { count: "exact", head: true })
           .eq("event_id", ev.id);
 
-        const { data: ci } = await supabase
+        const { count: ciCount } = await supabase
           .from("attendance")
-          .select("id")
+          .select("id", { count: "exact", head: true })
           .eq("event_id", ev.id)
           .eq("attendance_type", "checkin");
 
-        const { data: co } = await supabase
+        const { count: coCount } = await supabase
           .from("attendance")
-          .select("id")
+          .select("id", { count: "exact", head: true })
           .eq("event_id", ev.id)
           .eq("attendance_type", "checkout");
 
         return {
           ...ev,
-          reg_count: regs?.length || 0,
-          ci_count: ci?.length || 0,
-          co_count: co?.length || 0,
+          reg_count: regCount || 0,
+          ci_count: ciCount || 0,
+          co_count: coCount || 0,
         };
       })
     );
 
     setEvents(enriched);
+    setLoading(false);
   };
 
   const deleteEvent = async (id) => {
@@ -64,20 +81,32 @@ export default function AdminDashboard() {
     await supabase.from("event_registrations").delete().eq("event_id", id);
     const { error } = await supabase.from("events").delete().eq("id", id);
 
-    error ? toast.error("Gagal menghapus event") : toast.success("Event dihapus");
+    error
+      ? toast.error("Gagal menghapus event")
+      : toast.success("Event berhasil dihapus");
+
     loadEvents();
   };
 
   const getStatus = (date) => {
     const today = new Date().toISOString().slice(0, 10);
-    if (date < today) return { text: "Selesai", color: "bg-slate-200 text-slate-700" };
-    if (date === today) return { text: "Hari Ini", color: "bg-green-100 text-green-700" };
+    if (date < today)
+      return { text: "Selesai", color: "bg-slate-200 text-slate-700" };
+    if (date === today)
+      return { text: "Hari Ini", color: "bg-green-100 text-green-700" };
     return { text: "Akan Datang", color: "bg-blue-100 text-blue-700" };
   };
 
+  if (loading) {
+    return (
+      <div className="py-20 text-center text-slate-500">
+        Memuat dashboard...
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-10">
-
       {/* HEADER */}
       <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -167,7 +196,7 @@ export default function AdminDashboard() {
 }
 
 /* =========================
-   COMPONENT KECIL (UX CLEAN)
+   COMPONENT KECIL
 ========================= */
 
 function Metric({ icon, label, value }) {
@@ -187,9 +216,10 @@ function ActionBtn({ icon, label, onClick, danger }) {
     <button
       onClick={onClick}
       className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition
-        ${danger
-          ? "bg-red-50 text-red-700 hover:bg-red-100"
-          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+        ${
+          danger
+            ? "bg-red-50 text-red-700 hover:bg-red-100"
+            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
         }`}
     >
       {icon}
