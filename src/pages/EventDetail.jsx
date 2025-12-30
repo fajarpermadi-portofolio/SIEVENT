@@ -22,6 +22,12 @@ export default function EventDetail() {
   // ================= INIT =================
   useEffect(() => {
     init();
+    // refresh saat user balik dari Midtrans / pindah tab
+    window.addEventListener("focus", refreshRegistration);
+
+    return () => {
+      window.removeEventListener("focus", refreshRegistration);
+    };
     // eslint-disable-next-line
   }, [id]);
 
@@ -32,20 +38,25 @@ export default function EventDetail() {
     await loadEvent();
 
     if (currentUser) {
-      await loadRegistration(currentUser.id);
-      await loadAttendance(currentUser.id);
+      await Promise.all([
+        loadRegistration(currentUser.id),
+        loadAttendance(currentUser.id),
+      ]);
     }
 
     setLoading(false);
   };
 
+  const refreshRegistration = async () => {
+    if (user) {
+      await loadRegistration(user.id);
+    }
+  };
+
   // ================= USER =================
   const loadUser = async () => {
     const { data, error } = await supabase.auth.getUser();
-    if (error) {
-      console.error(error);
-      return null;
-    }
+    if (error) return null;
     setUser(data.user || null);
     return data.user || null;
   };
@@ -69,51 +80,43 @@ export default function EventDetail() {
 
   // ================= REGISTRATION =================
   const loadRegistration = async (userId) => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("event_registrations")
       .select("*")
       .eq("user_id", userId)
       .eq("event_id", id)
       .maybeSingle();
 
-    if (error) {
-      console.error(error);
-      return;
-    }
-
     setRegistration(data || null);
   };
 
-// ================= ATTENDANCE =================
-const loadAttendance = async (userId) => {
-  const [ci, co] = await Promise.all([
-    supabase
-      .from("attendance")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("event_id", id)
-      .eq("attendance_type", "checkin")
-      .order("timestamp", { ascending: false }) // ✅ FIX
-      .limit(1),
+  // ================= ATTENDANCE =================
+  const loadAttendance = async (userId) => {
+    const [ci, co] = await Promise.all([
+      supabase
+        .from("attendance")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("event_id", id)
+        .eq("attendance_type", "checkin")
+        .order("timestamp", { ascending: false })
+        .limit(1),
 
-    supabase
-      .from("attendance")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("event_id", id)
-      .eq("attendance_type", "checkout")
-      .order("timestamp", { ascending: false }) // ✅ FIX
-      .limit(1),
-  ]);
+      supabase
+        .from("attendance")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("event_id", id)
+        .eq("attendance_type", "checkout")
+        .order("timestamp", { ascending: false })
+        .limit(1),
+    ]);
 
-  if (ci.error) console.error("Check-in error:", ci.error);
-  if (co.error) console.error("Check-out error:", co.error);
-
-  setAttendance({
-    checkin: ci.data?.[0] || null,
-    checkout: co.data?.[0] || null,
-  });
-};
+    setAttendance({
+      checkin: ci.data?.[0] || null,
+      checkout: co.data?.[0] || null,
+    });
+  };
 
   // ================= REGISTER FREE =================
   const handleRegisterFree = async () => {
@@ -125,10 +128,7 @@ const loadAttendance = async (userId) => {
       payment_status: "paid",
     });
 
-    if (error) {
-      toast.error("Anda sudah terdaftar");
-      return;
-    }
+    if (error) return toast.error("Anda sudah terdaftar");
 
     toast.success("Berhasil mendaftar event!");
     await loadRegistration(user.id);
@@ -137,25 +137,19 @@ const loadAttendance = async (userId) => {
   // ================= PAYMENT =================
   const handlePayment = async () => {
     if (!user) return toast.error("Silakan login terlebih dahulu");
-    if (!event?.price || Number(event.price) <= 0) {
-      toast.error("Harga event tidak valid");
-      return;
-    }
+    if (!event?.price || Number(event.price) <= 0)
+      return toast.error("Harga event tidak valid");
 
     setLoadingPay(true);
 
     try {
       const { data, error } = await supabase.functions.invoke(
         "create-payment",
-        {
-          body: { event_id: id },
-        }
+        { body: { event_id: id } }
       );
 
-      if (error) throw error;
-      if (!data?.payment_url) {
-        throw new Error("Payment URL tidak tersedia");
-      }
+      if (error || !data?.payment_url)
+        throw new Error("Gagal membuat pembayaran");
 
       window.location.href = data.payment_url;
     } catch (err) {
@@ -177,7 +171,7 @@ const loadAttendance = async (userId) => {
 
   const isPaidEvent = Number(event.price) > 0;
   const isRegistered = !!registration;
-  const isPaid = registration?.payment_status === "paid";
+  const isPaid = registration?.payment_status === "paid"; // ⭐ PENTING
 
   return (
     <div className="min-h-screen bg-slate-100 px-6 py-10">
