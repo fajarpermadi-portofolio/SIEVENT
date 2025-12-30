@@ -13,6 +13,8 @@ export default function AdminEvent() {
     start_time: "",
     location: "",
     description: "",
+    is_paid: false,
+    price: 0,
   });
 
   const [pamphlet, setPamphlet] = useState(null);
@@ -28,9 +30,14 @@ export default function AdminEvent() {
       return;
     }
 
+    if (form.is_paid && (!form.price || form.price <= 0)) {
+      toast.error("Harga event berbayar harus lebih dari 0");
+      return;
+    }
+
     setLoading(true);
 
-    // Insert event awal
+    // 1️⃣ INSERT EVENT
     const { data: inserted, error: errInsert } = await supabase
       .from("events")
       .insert({
@@ -39,6 +46,8 @@ export default function AdminEvent() {
         location: form.location,
         start_time: form.start_time || null,
         description: form.description || null,
+        is_paid: form.is_paid,
+        price: form.is_paid ? form.price : 0,
       })
       .select()
       .single();
@@ -51,7 +60,7 @@ export default function AdminEvent() {
 
     const eid = inserted.id;
 
-    // Upload pamphlet
+    // 2️⃣ UPLOAD PAMPHLET
     let pamphlet_url = null;
 
     if (pamphlet) {
@@ -62,19 +71,20 @@ export default function AdminEvent() {
         .from("pamphlets")
         .upload(fileName, pamphlet, { upsert: true });
 
-      if (uploadErr) toast.error("Pamflet gagal diupload!");
-      else {
+      if (uploadErr) {
+        toast.error("Pamflet gagal diupload!");
+      } else {
         pamphlet_url = supabase.storage
           .from("pamphlets")
           .getPublicUrl(fileName).data.publicUrl;
       }
     }
 
-    // Generate QR
+    // 3️⃣ GENERATE QR
     const qrCheckIn = `HIROSI_EVENT:${eid}:checkin`;
     const qrCheckOut = `HIROSI_EVENT:${eid}:checkout`;
 
-    // Update event
+    // 4️⃣ UPDATE EVENT (QR + PAMPHLET)
     await supabase
       .from("events")
       .update({
@@ -100,8 +110,14 @@ export default function AdminEvent() {
           Event Berhasil Dibuat!
         </h1>
 
-        <p className="text-center text-gray-700 text-lg mt-3 mb-10">
+        <p className="text-center text-gray-700 text-lg mt-3 mb-2">
           {form.name}
+        </p>
+
+        <p className="text-center text-sm text-gray-500 mb-10">
+          {form.is_paid
+            ? `Event Berbayar — Rp ${form.price.toLocaleString("id-ID")}`
+            : "Event Gratis"}
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10 text-center">
@@ -120,7 +136,7 @@ export default function AdminEvent() {
 
         <button
           onClick={() => navigate("/admin/dashboard")}
-          className="mt-12 w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-xl transition active:scale-95"
+          className="mt-12 w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-xl transition"
         >
           Kembali ke Dashboard
         </button>
@@ -134,90 +150,106 @@ export default function AdminEvent() {
   return (
     <div className="max-w-3xl mx-auto bg-white p-10 rounded-2xl shadow-xl border">
 
-      {/* HEADER */}
       <h1 className="text-4xl font-extrabold text-purple-700 mb-6">
         Buat Event Baru
       </h1>
-      <p className="text-gray-600 mb-10">
-        Lengkapi detail berikut untuk membuat event seminar atau workshop HIROSI.
-      </p>
 
-      {/* FORM */}
       <div className="space-y-8">
 
-        {/* Nama Event */}
+        {/* Nama */}
         <div>
-          <label className="font-semibold text-gray-800">Nama Event *</label>
+          <label className="font-semibold">Nama Event *</label>
           <input
-            placeholder="Contoh: Seminar Teknologi AI 2025"
-            className="mt-2 w-full p-4 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-purple-400 outline-none"
+            className="mt-2 w-full p-4 border rounded-xl"
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
         </div>
 
         {/* Tanggal */}
         <div>
-          <label className="font-semibold text-gray-800">Tanggal *</label>
+          <label className="font-semibold">Tanggal *</label>
           <input
             type="date"
-            className="mt-2 w-full p-4 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-purple-400 outline-none"
+            className="mt-2 w-full p-4 border rounded-xl"
             onChange={(e) => setForm({ ...form, date: e.target.value })}
           />
         </div>
 
-        {/* Jam Mulai */}
+        {/* Jam */}
         <div>
-          <label className="font-semibold text-gray-800">Jam Mulai</label>
+          <label className="font-semibold">Jam Mulai</label>
           <input
             type="time"
-            className="mt-2 w-full p-4 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-purple-400 outline-none"
-            onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+            className="mt-2 w-full p-4 border rounded-xl"
+            onChange={(e) =>
+              setForm({ ...form, start_time: e.target.value })
+            }
           />
         </div>
 
         {/* Lokasi */}
         <div>
-          <label className="font-semibold text-gray-800">Lokasi *</label>
+          <label className="font-semibold">Lokasi *</label>
           <input
-            placeholder="Contoh: Aula Lt. 3 Kampus 2"
-            className="mt-2 w-full p-4 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-purple-400 outline-none"
+            className="mt-2 w-full p-4 border rounded-xl"
             onChange={(e) => setForm({ ...form, location: e.target.value })}
           />
         </div>
 
         {/* Deskripsi */}
         <div>
-          <label className="font-semibold text-gray-800">Deskripsi Event</label>
+          <label className="font-semibold">Deskripsi</label>
           <textarea
-            placeholder="Contoh: Seminar membahas perkembangan AI modern..."
-            className="mt-2 w-full p-4 border border-gray-300 rounded-xl shadow-sm h-36 resize-none focus:ring-2 focus:ring-purple-400 outline-none"
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            className="mt-2 w-full p-4 border rounded-xl h-36"
+            onChange={(e) =>
+              setForm({ ...form, description: e.target.value })
+            }
           />
         </div>
 
-        {/* Upload Pamflet */}
-        <div>
-          <label className="font-semibold text-gray-800">Upload Pamflet</label>
-
-          <div className="mt-3 border border-dashed border-gray-400 p-6 rounded-xl bg-gray-50 hover:bg-gray-100 transition cursor-pointer">
+        {/* BERBAYAR */}
+        <div className="border-t pt-6 space-y-4">
+          <label className="flex items-center gap-3 font-semibold">
             <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setPamphlet(e.target.files[0])}
-              className="w-full"
+              type="checkbox"
+              checked={form.is_paid}
+              onChange={(e) =>
+                setForm({ ...form, is_paid: e.target.checked })
+              }
             />
-          </div>
+            Event Berbayar
+          </label>
+
+          {form.is_paid && (
+            <input
+              type="number"
+              placeholder="Harga (Rp)"
+              className="w-full p-4 border rounded-xl"
+              onChange={(e) =>
+                setForm({ ...form, price: Number(e.target.value) })
+              }
+            />
+          )}
         </div>
 
-        {/* Submit */}
+        {/* Pamflet */}
+        <div>
+          <label className="font-semibold">Pamflet</label>
+          <input
+            type="file"
+            accept="image/*"
+            className="mt-2"
+            onChange={(e) => setPamphlet(e.target.files[0])}
+          />
+        </div>
+
         <button
           onClick={handleCreate}
           disabled={loading}
-          className="mt-4 w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-xl transition active:scale-95 disabled:opacity-50"
+          className="w-full py-4 bg-purple-600 text-white font-bold rounded-xl"
         >
           {loading ? "Memproses..." : "Buat Event"}
         </button>
-
       </div>
     </div>
   );
