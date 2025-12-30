@@ -32,7 +32,10 @@ import MyCertificates from "./pages/MyCertificates.jsx";
 import RequireAuth from "./components/RequireAuth.jsx";
 import RequireAdmin from "./components/RequireAdmin.jsx";
 
+import PaymentSuccess from "./pages/PaymentSuccess";
+
 const router = createBrowserRouter([
+  <Route path="/payment/success" element={<PaymentSuccess />} />
   // ============================
   // 🔐 AUTH ROUTES
   // ============================
@@ -84,7 +87,6 @@ const router = createBrowserRouter([
       { path: "certificate-editor/:eventId", element: <AdminCertificateEditor /> },
     ],
   },
-
   // ============================
   // ⭐ SERTIFIKAT SAYA (WAJIB LOGIN)
   // ============================
