@@ -44,7 +44,11 @@ export default function AdminQRDynamic() {
       const res = await fetch(`${FUNCTION_BASE}/generateDynamicQR`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event_id: eventId, type }),
+        body: JSON.stringify({
+  event_id: eventId,
+  attendance_type: type
+}),
+
       });
 
       const data = await res.json();
