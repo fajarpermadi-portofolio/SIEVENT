@@ -2,8 +2,10 @@ import "./tailwind.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { Toaster } from "react-hot-toast";
-
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import {
+  createBrowserRouter,
+  RouterProvider,
+} from "react-router-dom";
 
 // Layout
 import App from "./App.jsx";
@@ -25,17 +27,23 @@ import AdminEventEdit from "./pages/AdminEventEdit.jsx";
 import AdminQRDynamic from "./pages/AdminQRDynamic.jsx";
 import AdminCertificateEditor from "./pages/AdminCertificateEditor.jsx";
 
-// NEW PAGE — Sertifikat Saya (butuh login)
+// Other Pages
 import MyCertificates from "./pages/MyCertificates.jsx";
+import PaymentSuccess from "./pages/PaymentSuccess.jsx";
 
 // Middleware
 import RequireAuth from "./components/RequireAuth.jsx";
 import RequireAdmin from "./components/RequireAdmin.jsx";
 
-import PaymentSuccess from "./pages/PaymentSuccess";
-
 const router = createBrowserRouter([
-  <Route path="/payment/success" element={<PaymentSuccess />} />
+  // ============================
+  // 💳 PAYMENT SUCCESS (PUBLIC)
+  // ============================
+  {
+    path: "/payment/success",
+    element: <PaymentSuccess />,
+  },
+
   // ============================
   // 🔐 AUTH ROUTES
   // ============================
@@ -87,8 +95,9 @@ const router = createBrowserRouter([
       { path: "certificate-editor/:eventId", element: <AdminCertificateEditor /> },
     ],
   },
+
   // ============================
-  // ⭐ SERTIFIKAT SAYA (WAJIB LOGIN)
+  // ⭐ SERTIFIKAT SAYA
   // ============================
   {
     path: "/my-certificates",
