@@ -209,7 +209,7 @@ const { data: co } = await supabase
   {(() => {
     const ci = checkins.find(c => c.user_id === r.user_id);
     return ci
-      ? new Date(ci.created_at).toLocaleString("id-ID")
+      ? new Date(ci.timestamp).toLocaleString("id-ID")
       : "—";
   })()}
 </td>
@@ -218,11 +218,10 @@ const { data: co } = await supabase
   {(() => {
     const co = checkouts.find(c => c.user_id === r.user_id);
     return co
-      ? new Date(co.created_at).toLocaleString("id-ID")
+      ? new Date(co.timestamp).toLocaleString("id-ID")
       : "—";
   })()}
 </td>
-
                   <td>{r.payment_status}</td>
                   <td>
                     <button
