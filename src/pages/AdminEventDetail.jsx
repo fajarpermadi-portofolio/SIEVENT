@@ -209,7 +209,15 @@ const { data: co } = await supabase
   {(() => {
     const ci = checkins.find(c => c.user_id === r.user_id);
     return ci
-      ? new Date(ci.timestamp).toLocaleString("id-ID")
+      ? new Date(ci.timestamp).toLocaleString("id-ID", {
+          timeZone: "Asia/Jakarta",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        })
       : "—";
   })()}
 </td>
@@ -218,7 +226,15 @@ const { data: co } = await supabase
   {(() => {
     const co = checkouts.find(c => c.user_id === r.user_id);
     return co
-      ? new Date(co.timestamp).toLocaleString("id-ID")
+      ? new Date(co.timestamp).toLocaleString("id-ID", {
+          timeZone: "Asia/Jakarta",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        })
       : "—";
   })()}
 </td>
