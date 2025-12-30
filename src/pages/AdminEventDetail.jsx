@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabase";
+import QRCode from "react-qr-code";
 import * as XLSX from "xlsx";
 import { Download } from "lucide-react";
 import { toast } from "react-hot-toast";
@@ -18,94 +19,78 @@ export default function AdminEventDetail() {
   const [template, setTemplate] = useState(null);
   const [certificates, setCertificates] = useState([]);
 
-  // ============================
-  // LOAD ALL DATA
-  // ============================
+  // ================= LOAD ALL =================
   const loadAll = async () => {
-    try {
-      // EVENT
-      const { data: e, error: eErr } = await supabase
-        .from("events")
-        .select("*")
-        .eq("id", id)
-        .single();
+    // EVENT
+    const { data: ev } = await supabase
+      .from("events")
+      .select("*")
+      .eq("id", id)
+      .single();
+    setEvent(ev);
 
-      if (eErr) throw eErr;
-      setEvent(e);
+    // REGISTRATIONS
+    const { data: regs } = await supabase
+      .from("event_registrations")
+      .select("id, user_id, payment_status, users(name, npm, email)")
+      .eq("event_id", id);
 
-      // TEMPLATE
-      const { data: tpl } = await supabase
-        .from("certificate_templates")
-        .select("*")
-        .eq("event_id", id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    setRegistrations(regs || []);
 
-      setTemplate(tpl || null);
+    // ATTENDANCE
+    const { data: ci } = await supabase
+      .from("attendance")
+      .select("user_id")
+      .eq("event_id", id)
+      .eq("attendance_type", "checkin");
 
-      // REGISTRATIONS
-      const { data: regs, error: rErr } = await supabase
-        .from("event_registrations")
-        .select("id, user_id, payment_status, users(name, npm, email)")
-        .eq("event_id", id);
+    const { data: co } = await supabase
+      .from("attendance")
+      .select("user_id")
+      .eq("event_id", id)
+      .eq("attendance_type", "checkout");
 
-      if (rErr) throw rErr;
-      setRegistrations(regs || []);
+    setCheckins(ci || []);
+    setCheckouts(co || []);
 
-      // CHECKIN
-      const { data: ci } = await supabase
-        .from("attendance")
-        .select("user_id")
-        .eq("event_id", id)
-        .eq("attendance_type", "checkin");
+    // TEMPLATE
+    const { data: tpl } = await supabase
+      .from("certificate_templates")
+      .select("*")
+      .eq("event_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-      setCheckins(ci || []);
+    setTemplate(tpl || null);
 
-      // CHECKOUT
-      const { data: co } = await supabase
-        .from("attendance")
-        .select("user_id")
-        .eq("event_id", id)
-        .eq("attendance_type", "checkout");
+    // CERTIFICATES (PAID ONLY)
+    const paidUserIds = regs
+      ?.filter((r) => r.payment_status === "paid")
+      .map((r) => r.user_id);
 
-      setCheckouts(co || []);
+    const { data: cert } = await supabase
+      .from("certificates")
+      .select("id, user_id, file_url, users(name, email)")
+      .eq("event_id", id);
 
-      // CERTIFICATES (HANYA YANG PAID)
-      const paidUserIds = regs
-        .filter(r => r.payment_status === "paid")
-        .map(r => r.user_id);
-
-      const { data: certs } = await supabase
-        .from("certificates")
-        .select("id, file_url, user_id, users(name, email)")
-        .eq("event_id", id);
-
-      const filtered = certs?.filter(c =>
-        paidUserIds.includes(c.user_id)
-      );
-
-      setCertificates(filtered || []);
-
-    } catch (err) {
-      console.error(err);
-      toast.error("Gagal memuat detail event");
-    }
+    setCertificates(
+      cert?.filter((c) => paidUserIds?.includes(c.user_id)) || []
+    );
   };
 
   useEffect(() => {
     loadAll();
   }, [id]);
 
-  // ============================
-  // GENERATE SINGLE CERTIFICATE
-  // ============================
+  // ================= CERTIFICATE =================
   const generateSingle = async (reg) => {
     if (!template) return toast.error("Template sertifikat belum ada");
+    if (reg.payment_status !== "paid")
+      return toast.error("Peserta belum lunas");
 
     try {
       toast.loading("Membuat sertifikat...", { id: "gen" });
-
       await generateCertificateForUser(template, {
         id: reg.user_id,
         name: reg.users?.name,
@@ -114,61 +99,26 @@ export default function AdminEventDetail() {
         eventName: event.name,
         date: event.date,
       });
-
-      toast.success("Sertifikat berhasil dibuat", { id: "gen" });
+      toast.success("Sertifikat dibuat", { id: "gen" });
       loadAll();
-    } catch (err) {
-      toast.error("Gagal generate sertifikat", { id: "gen" });
+    } catch (e) {
+      toast.error(e.message, { id: "gen" });
     }
   };
 
-  // ============================
-  // GENERATE ALL CERTIFICATES
-  // ============================
-  const generateAll = async () => {
-    if (!template) return toast.error("Template belum disiapkan");
-
-    const validUsers = registrations.filter(r =>
-      checkins.some(c => c.user_id === r.user_id) &&
-      checkouts.some(c => c.user_id === r.user_id) &&
-      r.payment_status === "paid"
-    );
-
-    if (validUsers.length === 0)
-      return toast.error("Tidak ada peserta valid");
-
-    toast.loading("Generate semua sertifikat...", { id: "all" });
-
-    try {
-      for (const r of validUsers) {
-        await generateCertificateForUser(template, {
-          id: r.user_id,
-          name: r.users?.name,
-          npm: r.users?.npm,
-          email: r.users?.email,
-          eventName: event.name,
-          date: event.date,
-        });
-      }
-
-      toast.success("Semua sertifikat berhasil dibuat", { id: "all" });
-      loadAll();
-    } catch {
-      toast.error("Gagal generate massal", { id: "all" });
-    }
-  };
-
-  // ============================
-  // EXPORT EXCEL
-  // ============================
+  // ================= EXCEL =================
   const downloadExcel = () => {
-    const rows = registrations.map(r => ({
+    const rows = registrations.map((r) => ({
       Nama: r.users?.name,
       NPM: r.users?.npm,
       Email: r.users?.email,
-      CheckIn: checkins.some(c => c.user_id === r.user_id) ? "Ya" : "Tidak",
-      CheckOut: checkouts.some(c => c.user_id === r.user_id) ? "Ya" : "Tidak",
-      Payment: r.payment_status,
+      CheckIn: checkins.some((c) => c.user_id === r.user_id)
+        ? "Sudah"
+        : "Belum",
+      CheckOut: checkouts.some((c) => c.user_id === r.user_id)
+        ? "Sudah"
+        : "Belum",
+      Pembayaran: r.payment_status,
     }));
 
     const sheet = XLSX.utils.json_to_sheet(rows);
@@ -177,99 +127,120 @@ export default function AdminEventDetail() {
     XLSX.writeFile(book, `Rekap_${event.name}.xlsx`);
   };
 
-  if (!event) {
-    return <div className="p-10 text-center">Memuat event...</div>;
-  }
+  if (!event) return <p className="p-6">Memuat event...</p>;
 
-  // ============================
-  // UI
-  // ============================
+  // ================= UI =================
   return (
-    <div className="min-h-screen bg-slate-100 px-6 py-14">
+    <div className="min-h-screen bg-slate-100 p-8">
       <div className="max-w-7xl mx-auto space-y-16">
 
         {/* HEADER */}
-        <section className="border-b pb-10">
-          <h1 className="text-4xl font-extrabold">{event.name}</h1>
-          <p className="text-slate-600 mt-2">{event.description}</p>
+        <section className="grid md:grid-cols-12 gap-8 border-b pb-10">
+          <div className="md:col-span-4">
+            {event.pamphlet_url && (
+              <img src={event.pamphlet_url} className="rounded-xl" />
+            )}
+          </div>
 
-          <div className="flex gap-3 mt-6">
-            <button
-              onClick={downloadExcel}
-              className="px-4 py-2 border font-semibold flex items-center gap-2"
-            >
-              <Download size={16} /> Export Excel
-            </button>
+          <div className="md:col-span-8 space-y-4">
+            <h1 className="text-4xl font-extrabold">{event.name}</h1>
+            <p className="text-slate-600">{event.description}</p>
 
-            <button
-              onClick={() => navigate(`/admin/certificate-editor/${event.id}`)}
-              className="px-4 py-2 bg-slate-900 text-white font-semibold"
-            >
-              Template Sertifikat
-            </button>
+            <div className="grid grid-cols-2 md:grid-cols-4 text-sm">
+              <div><b>Tanggal</b><br />{event.date}</div>
+              <div><b>Jam</b><br />{event.start_time || "-"}</div>
+              <div><b>Lokasi</b><br />{event.location}</div>
+              <div><b>ID</b><br />{event.id}</div>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <button
+                onClick={() => navigate(`/admin/dynamicqr/${id}/checkin`)}
+                className="btn"
+              >
+                QR Check-In
+              </button>
+              <button
+                onClick={() => navigate(`/admin/dynamicqr/${id}/checkout`)}
+                className="btn"
+              >
+                QR Check-Out
+              </button>
+              <button onClick={downloadExcel} className="btn-outline">
+                <Download size={16} /> Export Excel
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* QR STATIK */}
+        <section className="grid md:grid-cols-2 gap-10 text-center">
+          <div>
+            <p className="font-semibold mb-2">QR Check-In (Statis)</p>
+            <QRCode value={`HIROSI_EVENT:${id}:checkin`} size={220} />
+          </div>
+          <div>
+            <p className="font-semibold mb-2">QR Check-Out (Statis)</p>
+            <QRCode value={`HIROSI_EVENT:${id}:checkout`} size={220} />
           </div>
         </section>
 
         {/* REKAP */}
         <section>
-          <h2 className="text-2xl font-bold mb-4">Rekap Kehadiran</h2>
-
-          <div className="overflow-x-auto border">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-200">
-                <tr>
-                  <th className="p-3">Nama</th>
-                  <th className="p-3">NPM</th>
-                  <th className="p-3">Email</th>
-                  <th className="p-3">Check-In</th>
-                  <th className="p-3">Check-Out</th>
+          <h2 className="text-2xl font-bold mb-4">Rekap Peserta</h2>
+          <table className="w-full bg-white border">
+            <thead className="bg-slate-200">
+              <tr>
+                <th>Nama</th>
+                <th>NPM</th>
+                <th>Check-In</th>
+                <th>Check-Out</th>
+                <th>Pembayaran</th>
+                <th>Sertifikat</th>
+              </tr>
+            </thead>
+            <tbody>
+              {registrations.map((r) => (
+                <tr key={r.id} className="border-t text-center">
+                  <td>{r.users?.name}</td>
+                  <td>{r.users?.npm}</td>
+                  <td>{checkins.some(c => c.user_id === r.user_id) ? "✔" : "—"}</td>
+                  <td>{checkouts.some(c => c.user_id === r.user_id) ? "✔" : "—"}</td>
+                  <td>{r.payment_status}</td>
+                  <td>
+                    <button
+                      onClick={() => generateSingle(r)}
+                      className="underline text-blue-600"
+                    >
+                      Generate
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {registrations.map(r => (
-                  <tr key={r.id} className="border-t">
-                    <td className="p-3">{r.users?.name}</td>
-                    <td className="p-3">{r.users?.npm}</td>
-                    <td className="p-3">{r.users?.email}</td>
-                    <td className="p-3 text-center">
-                      {checkins.some(c => c.user_id === r.user_id) ? "✔" : "—"}
-                    </td>
-                    <td className="p-3 text-center">
-                      {checkouts.some(c => c.user_id === r.user_id) ? "✔" : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </section>
 
-        {/* SERTIFIKAT */}
+        {/* PREVIEW SERTIFIKAT */}
         <section>
-          <div className="flex justify-between mb-4">
-            <h2 className="text-2xl font-bold">Generate Sertifikat</h2>
-            <button
-              onClick={generateAll}
-              className="px-4 py-2 bg-green-700 text-white font-semibold"
-            >
-              Generate Semua
-            </button>
-          </div>
+          <h2 className="text-2xl font-bold mb-4">Preview Sertifikat</h2>
 
-          <div className="border divide-y">
-            {registrations.map(r => (
-              <div key={r.id} className="p-4 flex justify-between">
-                <div>
-                  <p className="font-semibold">{r.users?.name}</p>
-                  <p className="text-sm text-slate-500">{r.users?.email}</p>
+          {certificates.length === 0 && (
+            <p className="text-slate-500">Belum ada sertifikat</p>
+          )}
+
+          <div className="grid md:grid-cols-3 gap-6">
+            {certificates.map((c) => (
+              <div key={c.id} className="border bg-white p-4">
+                <p className="font-semibold text-center mb-2">
+                  {c.users?.name}
+                </p>
+                <img src={c.file_url} className="h-40 w-full object-cover" />
+                <div className="text-center mt-3 text-sm">
+                  <a href={c.file_url} target="_blank" className="underline">
+                    Lihat / Download
+                  </a>
                 </div>
-
-                <button
-                  onClick={() => generateSingle(r)}
-                  className="px-4 py-2 border font-semibold"
-                >
-                  Generate
-                </button>
               </div>
             ))}
           </div>
