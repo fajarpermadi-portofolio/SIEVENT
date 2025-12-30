@@ -1,46 +1,68 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabase";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 
 export default function PaymentSuccess() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
 
+  const orderId = params.get("order_id");
+
   const [loading, setLoading] = useState(true);
-  const [valid, setValid] = useState(false);
+  const [status, setStatus] = useState("pending"); // pending | success | failed
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const orderId = params.get("order_id");
-    const transactionStatus = params.get("transaction_status");
-
     if (!orderId) {
+      setStatus("failed");
       setMessage("Order ID tidak ditemukan");
       setLoading(false);
       return;
     }
 
-    // Status yang dianggap berhasil
-    if (
-      transactionStatus === "settlement" ||
-      transactionStatus === "capture"
-    ) {
-      setValid(true);
-      setMessage("Pembayaran berhasil 🎉");
-    } else if (transactionStatus === "pending") {
-      setMessage("Pembayaran sedang diproses");
-    } else {
-      setMessage("Pembayaran gagal atau dibatalkan");
-    }
+    let attempt = 0;
+    const maxAttempt = 10; // ~10 detik
 
-    setLoading(false);
-  }, []);
+    const interval = setInterval(async () => {
+      attempt++;
+
+      const { data, error } = await supabase
+        .from("event_registrations")
+        .select("payment_status")
+        .eq("order_id", orderId)
+        .maybeSingle();
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      if (data?.payment_status === "paid") {
+        clearInterval(interval);
+        setStatus("success");
+        setMessage("Pembayaran berhasil 🎉");
+        setLoading(false);
+      }
+
+      if (attempt >= maxAttempt) {
+        clearInterval(interval);
+        setStatus("pending");
+        setMessage(
+          "Pembayaran sedang diproses. Silakan cek kembali beberapa saat lagi."
+        );
+        setLoading(false);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [orderId]);
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        Memeriksa status pembayaran...
+      <div className="min-h-screen flex items-center justify-center gap-3 text-slate-600">
+        <Loader2 className="animate-spin" />
+        Memverifikasi pembayaran...
       </div>
     );
   }
@@ -49,10 +71,10 @@ export default function PaymentSuccess() {
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-6">
       <div className="bg-white max-w-md w-full p-8 rounded-2xl shadow-lg text-center space-y-6">
 
-        {valid ? (
+        {status === "success" ? (
           <CheckCircle2 size={80} className="text-green-600 mx-auto" />
         ) : (
-          <XCircle size={80} className="text-red-600 mx-auto" />
+          <XCircle size={80} className="text-orange-500 mx-auto" />
         )}
 
         <h1 className="text-2xl font-bold text-slate-900">
@@ -60,15 +82,26 @@ export default function PaymentSuccess() {
         </h1>
 
         <p className="text-slate-600 text-sm">
-          Status pembayaran Anda sedang disinkronkan dengan sistem.
-          Jika sudah berhasil, Anda dapat langsung mengikuti event.
+          Status pembayaran diambil langsung dari sistem.
+          Jika pembayaran baru saja dilakukan, mohon tunggu beberapa saat.
         </p>
+
+        <div className="flex flex-col gap-3">
           <button
             onClick={() => navigate("/")}
             className="px-6 py-3 border border-slate-900 rounded-lg hover:bg-slate-900 hover:text-white transition"
           >
             Kembali ke Beranda
           </button>
+
+          {status === "success" && (
+            <button
+              onClick={() => navigate("/my-certificates")}
+              className="px-6 py-3 bg-green-700 text-white rounded-lg hover:bg-green-800 transition"
+            >
+              Lihat Sertifikat Saya
+            </button>
+          )}
         </div>
       </div>
     </div>
