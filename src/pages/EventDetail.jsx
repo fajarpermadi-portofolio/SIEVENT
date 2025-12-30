@@ -1,4 +1,3 @@
-// src/pages/EventDetail.jsx
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabase";
@@ -22,6 +21,7 @@ export default function EventDetail() {
   // ================= INIT =================
   useEffect(() => {
     init();
+    // eslint-disable-next-line
   }, [id]);
 
   const init = async () => {
@@ -40,7 +40,11 @@ export default function EventDetail() {
 
   // ================= USER =================
   const loadUser = async () => {
-    const { data } = await supabase.auth.getUser();
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      console.error(error);
+      return null;
+    }
     setUser(data.user || null);
     return data.user || null;
   };
@@ -64,12 +68,17 @@ export default function EventDetail() {
 
   // ================= REGISTRATION =================
   const loadRegistration = async (userId) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("event_registrations")
       .select("*")
       .eq("user_id", userId)
       .eq("event_id", id)
       .maybeSingle();
+
+    if (error) {
+      console.error(error);
+      return;
+    }
 
     setRegistration(data || null);
   };
@@ -82,7 +91,7 @@ export default function EventDetail() {
         .select("*")
         .eq("user_id", userId)
         .eq("event_id", id)
-        .eq("type", "checkin")
+        .eq("attendance_type", "checkin")
         .order("created_at", { ascending: false })
         .limit(1),
 
@@ -91,7 +100,7 @@ export default function EventDetail() {
         .select("*")
         .eq("user_id", userId)
         .eq("event_id", id)
-        .eq("type", "checkout")
+        .eq("attendance_type", "checkout")
         .order("created_at", { ascending: false })
         .limit(1),
     ]);
@@ -137,7 +146,6 @@ export default function EventDetail() {
         {
           body: {
             event_id: id,
-            amount: Number(event.price),
           },
         }
       );
