@@ -224,6 +224,11 @@ export default function EventDetail() {
             </p>
           </div>
         )}
+{event.is_paid && (
+  <p className="text-lg font-semibold text-red-700">
+    Biaya Pendaftaran: Rp {event.price.toLocaleString("id-ID")}
+  </p>
+)}
 
         {/* ACTION */}
         {!registered && (
