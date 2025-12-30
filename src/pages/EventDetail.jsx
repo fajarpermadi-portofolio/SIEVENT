@@ -84,36 +84,36 @@ export default function EventDetail() {
     setRegistration(data || null);
   };
 
-  // ================= ATTENDANCE =================
-  const loadAttendance = async (userId) => {
-    const [ci, co] = await Promise.all([
-      supabase
-        .from("attendance")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("event_id", id)
-        .eq("attendance_type", "checkin") // ✅ FIXED
-        .order("created_at", { ascending: false })
-        .limit(1),
+// ================= ATTENDANCE =================
+const loadAttendance = async (userId) => {
+  const [ci, co] = await Promise.all([
+    supabase
+      .from("attendance")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("event_id", id)
+      .eq("attendance_type", "checkin")
+      .order("timestamp", { ascending: false }) // ✅ FIX
+      .limit(1),
 
-      supabase
-        .from("attendance")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("event_id", id)
-        .eq("attendance_type", "checkout") // ✅ FIXED
-        .order("created_at", { ascending: false })
-        .limit(1),
-    ]);
+    supabase
+      .from("attendance")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("event_id", id)
+      .eq("attendance_type", "checkout")
+      .order("timestamp", { ascending: false }) // ✅ FIX
+      .limit(1),
+  ]);
 
-    if (ci.error) console.error("Check-in error:", ci.error);
-    if (co.error) console.error("Check-out error:", co.error);
+  if (ci.error) console.error("Check-in error:", ci.error);
+  if (co.error) console.error("Check-out error:", co.error);
 
-    setAttendance({
-      checkin: ci.data?.[0] || null,
-      checkout: co.data?.[0] || null,
-    });
-  };
+  setAttendance({
+    checkin: ci.data?.[0] || null,
+    checkout: co.data?.[0] || null,
+  });
+};
 
   // ================= REGISTER FREE =================
   const handleRegisterFree = async () => {
