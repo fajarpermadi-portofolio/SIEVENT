@@ -54,6 +54,22 @@ const { data: co } = await supabase
     setCheckins(ci || []);
     setCheckouts(co || []);
 
+    const toWIB = (ts) => {
+  if (!ts) return "—";
+
+  const d = new Date(ts);
+  d.setHours(d.getHours() + 7); // konversi ke WIB
+
+  return d.toLocaleString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
     // TEMPLATE
     const { data: tpl } = await supabase
       .from("certificate_templates")
@@ -208,34 +224,14 @@ const { data: co } = await supabase
 <td className="text-center">
   {(() => {
     const ci = checkins.find(c => c.user_id === r.user_id);
-    return ci
-      ? new Date(ci.timestamp).toLocaleString("id-ID", {
-          timeZone: "Asia/Jakarta",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        })
-      : "—";
+    return ci ? toWIB(ci.timestamp) : "—";
   })()}
 </td>
 
 <td className="text-center">
   {(() => {
     const co = checkouts.find(c => c.user_id === r.user_id);
-    return co
-      ? new Date(co.timestamp).toLocaleString("id-ID", {
-          timeZone: "Asia/Jakarta",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        })
-      : "—";
+    return co ? toWIB(co.timestamp) : "—";
   })()}
 </td>
                   <td>{r.payment_status}</td>
