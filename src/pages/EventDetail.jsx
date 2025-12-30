@@ -1,3 +1,4 @@
+// src/pages/EventDetail.jsx
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabase";
@@ -91,7 +92,7 @@ export default function EventDetail() {
         .select("*")
         .eq("user_id", userId)
         .eq("event_id", id)
-        .eq("attendance_type", "checkin")
+        .eq("attendance_type", "checkin") // ✅ FIXED
         .order("created_at", { ascending: false })
         .limit(1),
 
@@ -100,10 +101,13 @@ export default function EventDetail() {
         .select("*")
         .eq("user_id", userId)
         .eq("event_id", id)
-        .eq("attendance_type", "checkout")
+        .eq("attendance_type", "checkout") // ✅ FIXED
         .order("created_at", { ascending: false })
         .limit(1),
     ]);
+
+    if (ci.error) console.error("Check-in error:", ci.error);
+    if (co.error) console.error("Check-out error:", co.error);
 
     setAttendance({
       checkin: ci.data?.[0] || null,
@@ -144,9 +148,7 @@ export default function EventDetail() {
       const { data, error } = await supabase.functions.invoke(
         "create-payment",
         {
-          body: {
-            event_id: id,
-          },
+          body: { event_id: id },
         }
       );
 
