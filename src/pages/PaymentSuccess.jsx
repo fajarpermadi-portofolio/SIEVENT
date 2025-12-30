@@ -63,15 +63,6 @@ export default function PaymentSuccess() {
           Status pembayaran Anda sedang disinkronkan dengan sistem.
           Jika sudah berhasil, Anda dapat langsung mengikuti event.
         </p>
-
-        <div className="flex flex-col gap-3 pt-4">
-          <button
-            onClick={() => navigate("/my-events")}
-            className="px-6 py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
-          >
-            Lihat Event Saya
-          </button>
-
           <button
             onClick={() => navigate("/")}
             className="px-6 py-3 border border-slate-900 rounded-lg hover:bg-slate-900 hover:text-white transition"
