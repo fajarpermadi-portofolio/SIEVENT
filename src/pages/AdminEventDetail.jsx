@@ -53,23 +53,6 @@ const { data: co } = await supabase
 
     setCheckins(ci || []);
     setCheckouts(co || []);
-
-    const toWIB = (ts) => {
-  if (!ts) return "—";
-
-  const d = new Date(ts);
-  d.setHours(d.getHours() + 7); // konversi ke WIB
-
-  return d.toLocaleString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-};
-
     // TEMPLATE
     const { data: tpl } = await supabase
       .from("certificate_templates")
