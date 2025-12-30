@@ -9,7 +9,7 @@ export default function DashboardUser() {
   const [events, setEvents] = useState([]);
   const [registered, setRegistered] = useState([]);
   const [user, setUser] = useState(null);
-  const [loadingReg, setLoadingReg] = useState(false);
+  const [loadingAction, setLoadingAction] = useState(null); // eventId
 
   useEffect(() => {
     loadUserAndData();
@@ -25,12 +25,12 @@ export default function DashboardUser() {
     setUser(data.user || null);
 
     if (data.user) {
-      const reg = await supabase
+      const { data: reg } = await supabase
         .from("event_registrations")
         .select("event_id")
         .eq("user_id", data.user.id);
 
-      setRegistered(reg.data || []);
+      setRegistered(reg || []);
     }
   };
 
@@ -43,28 +43,56 @@ export default function DashboardUser() {
     setEvents(data || []);
   };
 
-  const handleRegister = async (eventId) => {
+  // =============================
+  // FREE EVENT
+  // =============================
+  const handleRegisterFree = async (eventId) => {
     if (!user) return toast.error("Harap login terlebih dahulu");
-    if (registered.some(r => r.event_id === eventId))
-      return toast("Anda sudah terdaftar");
 
-    setLoadingReg(true);
+    setLoadingAction(eventId);
 
     const { error } = await supabase.from("event_registrations").insert({
       user_id: user.id,
       event_id: eventId,
-      payment_status: "free",
+      payment_status: "paid",
     });
 
     if (error) {
       toast.error("Gagal mendaftar");
-      setLoadingReg(false);
-      return;
+    } else {
+      toast.success("Berhasil mendaftar event!");
+      await loadUser();
     }
 
-    toast.success("Berhasil mendaftar event!");
-    await loadUser();
-    setLoadingReg(false);
+    setLoadingAction(null);
+  };
+
+  // =============================
+  // PAID EVENT
+  // =============================
+  const handleRegisterPaid = async (eventId) => {
+    if (!user) return toast.error("Harap login terlebih dahulu");
+
+    setLoadingAction(eventId);
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "create-payment",
+        {
+          body: { event_id: eventId },
+        }
+      );
+
+      if (error || !data?.payment_url) {
+        throw error || new Error("Payment URL tidak tersedia");
+      }
+
+      window.location.href = data.payment_url;
+    } catch (err) {
+      console.error(err);
+      toast.error("Gagal memulai pembayaran");
+      setLoadingAction(null);
+    }
   };
 
   return (
@@ -78,85 +106,97 @@ export default function DashboardUser() {
           </h1>
           <p className="mt-2 text-lg text-slate-500 max-w-4xl">
             Pusat informasi seminar dan workshop yang dapat kamu ikuti
-            untuk meningkatkan wawasan dan keterampilan.
           </p>
         </header>
 
-{/* EVENT LIST */}
-<section className="border-t border-slate-300">
-  {events.map((ev, index) => {
-    const isRegistered = registered.some(
-      r => r.event_id === ev.id
-    );
+        {/* EVENT LIST */}
+        <section className="border-t border-slate-300">
+          {events.map((ev, index) => {
+            const isRegistered = registered.some(
+              (r) => r.event_id === ev.id
+            );
 
-    return (
-      <div
-        key={ev.id}
-        className="
-          grid grid-cols-12 gap-6
-          py-4
-          border-b border-slate-300
-          items-start
-        "
-      >
-        {/* INDEX */}
-        <div className="hidden md:block col-span-1 font-mono text-slate-400 text-sm">
-          {String(index + 1).padStart(2, "0")}
-        </div>
+            const isPaidEvent = Number(ev.price) > 0;
 
-        {/* IMAGE */}
-        <div className="col-span-12 md:col-span-2">
-          <img
-            src={ev.pamphlet_url || "/no-pamphlet.png"}
-            alt={ev.name}
-            className="w-full aspect-[3/4] object-contain"
-          />
-        </div>
+            return (
+              <div
+                key={ev.id}
+                className="grid grid-cols-12 gap-6 py-4 border-b border-slate-300"
+              >
+                {/* INDEX */}
+                <div className="hidden md:block col-span-1 text-slate-400 font-mono">
+                  {String(index + 1).padStart(2, "0")}
+                </div>
 
-        {/* CONTENT */}
-        <div className="col-span-12 md:col-span-6">
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-            {ev.name}
-          </h2>
+                {/* IMAGE */}
+                <div className="col-span-12 md:col-span-2">
+                  <img
+                    src={ev.pamphlet_url || "/no-pamphlet.png"}
+                    alt={ev.name}
+                    className="w-full aspect-[3/4] object-contain"
+                  />
+                </div>
 
-          <div className="mt-3 text-sm text-slate-600 space-y-1">
-            <p>{ev.date}</p>
-            <p>{ev.location}</p>
-            {ev.start_time && <p>{ev.start_time}</p>}
-          </div>
+                {/* CONTENT */}
+                <div className="col-span-12 md:col-span-6">
+                  <h2 className="text-2xl font-bold">{ev.name}</h2>
 
-          <p className="mt-4 text-slate-700 leading-relaxed max-w-xl">
-            {ev.description || "-"}
-          </p>
-        </div>
+                  <div className="mt-2 text-sm text-slate-600">
+                    <p>{ev.date}</p>
+                    <p>{ev.location}</p>
+                    {ev.start_time && <p>{ev.start_time}</p>}
+                  </div>
 
-        {/* ACTION */}
-        <div className="col-span-12 md:col-span-3 flex flex-col gap-3 text-sm">
-          <button
-            onClick={() => navigate(`/event/${ev.id}`)}
-            className="px-4 py-2 font-semibold underline underline-offset-4 text-left hover:text-slate-500 transition"
-          >
-            Lihat Detail / Presensi
-          </button>
+                  <p className="mt-3 text-slate-700 max-w-xl">
+                    {ev.description || "-"}
+                  </p>
 
-          {isRegistered ? (
-            <div className="px-2 py-2 border border-green-600 text-green-700 font-semibold text-center">
-              Sudah Terdaftar
-            </div>
-          ) : (
-            <button
-              onClick={() => handleRegister(ev.id)}
-              disabled={loadingReg}
-              className="px-4 py-2 bg-slate-900 text-white font-semibold hover:bg-slate-800 transition disabled:opacity-50"
-            >
-              {loadingReg ? "Memproses..." : "Daftar Event"}
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  })}
-</section>
+                  {isPaidEvent && (
+                    <p className="mt-2 font-semibold text-green-700">
+                      Harga: Rp {Number(ev.price).toLocaleString("id-ID")}
+                    </p>
+                  )}
+                </div>
+
+                {/* ACTION */}
+                <div className="col-span-12 md:col-span-3 flex flex-col gap-3">
+                  <button
+                    onClick={() => navigate(`/event/${ev.id}`)}
+                    className="underline text-left hover:text-slate-500"
+                  >
+                    Lihat Detail / Presensi
+                  </button>
+
+                  {isRegistered ? (
+                    <div className="border border-green-600 text-green-700 py-2 text-center font-semibold">
+                      Sudah Terdaftar
+                    </div>
+                  ) : isPaidEvent ? (
+                    <button
+                      onClick={() => handleRegisterPaid(ev.id)}
+                      disabled={loadingAction === ev.id}
+                      className="bg-green-700 text-white py-2 font-semibold hover:bg-green-800 disabled:opacity-50"
+                    >
+                      {loadingAction === ev.id
+                        ? "Memproses..."
+                        : "Daftar & Bayar"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleRegisterFree(ev.id)}
+                      disabled={loadingAction === ev.id}
+                      className="bg-slate-900 text-white py-2 font-semibold hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      {loadingAction === ev.id
+                        ? "Memproses..."
+                        : "Daftar Event"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </section>
       </div>
     </div>
   );
