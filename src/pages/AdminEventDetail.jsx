@@ -38,17 +38,18 @@ export default function AdminEventDetail() {
     setRegistrations(regs || []);
 
     // ATTENDANCE
-    const { data: ci } = await supabase
-      .from("attendance")
-      .select("user_id")
-      .eq("event_id", id)
-      .eq("attendance_type", "checkin");
+const { data: ci } = await supabase
+  .from("attendance")
+  .select("user_id, created_at")
+  .eq("event_id", id)
+  .eq("attendance_type", "checkin");
 
-    const { data: co } = await supabase
-      .from("attendance")
-      .select("user_id")
-      .eq("event_id", id)
-      .eq("attendance_type", "checkout");
+const { data: co } = await supabase
+  .from("attendance")
+  .select("user_id, created_at")
+  .eq("event_id", id)
+  .eq("attendance_type", "checkout");
+
 
     setCheckins(ci || []);
     setCheckouts(co || []);
@@ -204,8 +205,24 @@ export default function AdminEventDetail() {
                 <tr key={r.id} className="border-t text-center">
                   <td>{r.users?.name}</td>
                   <td>{r.users?.npm}</td>
-                  <td>{checkins.some(c => c.user_id === r.user_id) ? "✔" : "—"}</td>
-                  <td>{checkouts.some(c => c.user_id === r.user_id) ? "✔" : "—"}</td>
+<td className="text-center">
+  {(() => {
+    const ci = checkins.find(c => c.user_id === r.user_id);
+    return ci
+      ? new Date(ci.created_at).toLocaleString("id-ID")
+      : "—";
+  })()}
+</td>
+
+<td className="text-center">
+  {(() => {
+    const co = checkouts.find(c => c.user_id === r.user_id);
+    return co
+      ? new Date(co.created_at).toLocaleString("id-ID")
+      : "—";
+  })()}
+</td>
+
                   <td>{r.payment_status}</td>
                   <td>
                     <button
