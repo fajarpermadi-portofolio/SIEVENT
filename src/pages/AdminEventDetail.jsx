@@ -40,13 +40,13 @@ export default function AdminEventDetail() {
     // ATTENDANCE
 const { data: ci } = await supabase
   .from("attendance")
-  .select("user_id, created_at")
+  .select("user_id, timestamp")
   .eq("event_id", id)
   .eq("attendance_type", "checkin");
 
 const { data: co } = await supabase
   .from("attendance")
-  .select("user_id, created_at")
+  .select("user_id, timestamp")
   .eq("event_id", id)
   .eq("attendance_type", "checkout");
 
