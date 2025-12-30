@@ -1,3 +1,4 @@
+// src/pages/AdminEventEdit.jsx
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../supabase";
@@ -12,9 +13,9 @@ export default function AdminEventEdit() {
   const [eventData, setEventData] = useState(null);
   const [pamphlet, setPamphlet] = useState(null);
 
-  // =====================================================
+  // ==============================
   // LOAD EVENT
-  // =====================================================
+  // ==============================
   useEffect(() => {
     loadEvent();
   }, []);
@@ -26,22 +27,33 @@ export default function AdminEventEdit() {
       .eq("id", id)
       .single();
 
-    if (error) {
+    if (error || !data) {
       toast.error("Event tidak ditemukan");
       navigate("/admin/dashboard");
       return;
     }
 
-    setEventData(data);
+    // default safety
+    setEventData({
+      ...data,
+      is_paid: data.is_paid ?? false,
+      price: data.price ?? 0,
+    });
+
     setLoading(false);
   };
 
-  // =====================================================
-  // SAVE CHANGES
-  // =====================================================
+  // ==============================
+  // SAVE EVENT
+  // ==============================
   const handleSave = async () => {
     if (!eventData.name || !eventData.date || !eventData.location) {
       toast.error("Nama, tanggal, dan lokasi wajib diisi!");
+      return;
+    }
+
+    if (eventData.is_paid && (!eventData.price || eventData.price <= 0)) {
+      toast.error("Harga event berbayar harus lebih dari 0");
       return;
     }
 
@@ -49,14 +61,20 @@ export default function AdminEventEdit() {
 
     let newPamphletUrl = eventData.pamphlet_url;
 
-    // Jika admin upload pamflet baru
+    // Upload pamflet baru (opsional)
     if (pamphlet) {
       const ext = pamphlet.name.split(".").pop();
       const fileName = `pamphlet_${id}.${ext}`;
 
-      await supabase.storage
+      const { error: upErr } = await supabase.storage
         .from("pamphlets")
         .upload(fileName, pamphlet, { upsert: true });
+
+      if (upErr) {
+        toast.error("Gagal upload pamflet");
+        setSaving(false);
+        return;
+      }
 
       newPamphletUrl = supabase.storage
         .from("pamphlets")
@@ -68,10 +86,12 @@ export default function AdminEventEdit() {
       .update({
         name: eventData.name,
         date: eventData.date,
-        location: eventData.location,
         start_time: eventData.start_time,
+        location: eventData.location,
         description: eventData.description,
         pamphlet_url: newPamphletUrl,
+        is_paid: eventData.is_paid,
+        price: eventData.is_paid ? eventData.price : 0,
       })
       .eq("id", id);
 
@@ -83,23 +103,23 @@ export default function AdminEventEdit() {
     }
 
     toast.success("Event berhasil diperbarui!");
-    navigate("/admin/dashboard");
+    navigate(`/admin/event/${id}`);
   };
 
-  // =====================================================
-  // LOADER
-  // =====================================================
+  // ==============================
+  // LOADING
+  // ==============================
   if (loading) {
     return (
-      <div className="min-h-screen flex justify-center items-center text-purple-700 text-xl">
+      <div className="min-h-screen flex items-center justify-center text-purple-700 text-xl">
         Memuat data event...
       </div>
     );
   }
 
-  // =====================================================
+  // ==============================
   // UI
-  // =====================================================
+  // ==============================
   return (
     <div className="max-w-4xl mx-auto bg-white p-10 rounded-2xl shadow-xl border">
 
@@ -109,14 +129,13 @@ export default function AdminEventEdit() {
           Edit Event
         </h1>
         <p className="text-gray-600 mt-1">
-          Perbarui informasi lengkap mengenai event HIROSI.
+          Perbarui informasi event dan pengaturan pembayaran.
         </p>
       </div>
 
-      {/* FORM GRID */}
       <div className="space-y-8">
 
-        {/* Nama Event */}
+        {/* NAMA */}
         <div>
           <label className="font-semibold text-gray-800">Nama Event *</label>
           <input
@@ -124,12 +143,11 @@ export default function AdminEventEdit() {
             onChange={(e) =>
               setEventData({ ...eventData, name: e.target.value })
             }
-            className="mt-2 w-full p-4 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-purple-400 outline-none"
-            placeholder="Contoh: Seminar Cyber Security"
+            className="mt-2 w-full p-4 border rounded-xl focus:ring-2 focus:ring-purple-400"
           />
         </div>
 
-        {/* Tanggal */}
+        {/* TANGGAL */}
         <div>
           <label className="font-semibold text-gray-800">Tanggal *</label>
           <input
@@ -138,11 +156,11 @@ export default function AdminEventEdit() {
             onChange={(e) =>
               setEventData({ ...eventData, date: e.target.value })
             }
-            className="mt-2 w-full p-4 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-purple-400 outline-none"
+            className="mt-2 w-full p-4 border rounded-xl focus:ring-2 focus:ring-purple-400"
           />
         </div>
 
-        {/* Waktu */}
+        {/* JAM */}
         <div>
           <label className="font-semibold text-gray-800">Jam Mulai</label>
           <input
@@ -151,11 +169,11 @@ export default function AdminEventEdit() {
             onChange={(e) =>
               setEventData({ ...eventData, start_time: e.target.value })
             }
-            className="mt-2 w-full p-4 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-purple-400 outline-none"
+            className="mt-2 w-full p-4 border rounded-xl focus:ring-2 focus:ring-purple-400"
           />
         </div>
 
-        {/* Lokasi */}
+        {/* LOKASI */}
         <div>
           <label className="font-semibold text-gray-800">Lokasi *</label>
           <input
@@ -163,12 +181,11 @@ export default function AdminEventEdit() {
             onChange={(e) =>
               setEventData({ ...eventData, location: e.target.value })
             }
-            className="mt-2 w-full p-4 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-purple-400 outline-none"
-            placeholder="Contoh: Aula Kampus 2"
+            className="mt-2 w-full p-4 border rounded-xl focus:ring-2 focus:ring-purple-400"
           />
         </div>
 
-        {/* Deskripsi */}
+        {/* DESKRIPSI */}
         <div>
           <label className="font-semibold text-gray-800">Deskripsi</label>
           <textarea
@@ -176,12 +193,50 @@ export default function AdminEventEdit() {
             onChange={(e) =>
               setEventData({ ...eventData, description: e.target.value })
             }
-            className="mt-2 w-full p-4 border border-gray-300 rounded-xl shadow-sm rounded-2xl resize-none h-36 focus:ring-2 focus:ring-purple-400 outline-none"
-            placeholder="Jelaskan detail event..."
+            className="mt-2 w-full p-4 border rounded-xl h-36 resize-none focus:ring-2 focus:ring-purple-400"
           />
         </div>
 
-        {/* Pamflet */}
+        {/* EVENT BERBAYAR */}
+        <div className="border-t pt-6 space-y-4">
+          <label className="flex items-center gap-3 font-semibold text-gray-800">
+            <input
+              type="checkbox"
+              checked={eventData.is_paid}
+              onChange={(e) =>
+                setEventData({
+                  ...eventData,
+                  is_paid: e.target.checked,
+                })
+              }
+              className="w-5 h-5"
+            />
+            Event Berbayar
+          </label>
+
+          {eventData.is_paid && (
+            <div>
+              <label className="font-semibold text-gray-800">
+                Harga Event (Rp)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={eventData.price}
+                onChange={(e) =>
+                  setEventData({
+                    ...eventData,
+                    price: Number(e.target.value),
+                  })
+                }
+                className="mt-2 w-full p-4 border rounded-xl focus:ring-2 focus:ring-purple-400"
+                placeholder="Contoh: 50000"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* PAMFLET */}
         <div>
           <label className="font-semibold text-gray-800">
             Pamflet Event (opsional)
@@ -190,7 +245,7 @@ export default function AdminEventEdit() {
           {eventData.pamphlet_url && (
             <img
               src={eventData.pamphlet_url}
-              className="w-56 rounded-xl mt-3 border shadow-md"
+              className="w-56 rounded-xl mt-3 border"
               alt="Pamflet"
             />
           )}
@@ -203,11 +258,11 @@ export default function AdminEventEdit() {
           />
         </div>
 
-        {/* SAVE BUTTON */}
+        {/* SAVE */}
         <button
           onClick={handleSave}
           disabled={saving}
-          className="w-full mt-6 py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50"
+          className="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition disabled:opacity-50"
         >
           {saving ? "Menyimpan..." : "Simpan Perubahan"}
         </button>
