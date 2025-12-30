@@ -19,25 +19,34 @@ export default function EventDetail() {
   const [loading, setLoading] = useState(true);
   const [loadingPay, setLoadingPay] = useState(false);
 
+  // =====================================================
+  // INIT
+  // =====================================================
   useEffect(() => {
-    loadPage();
+    init();
   }, []);
 
-  const loadPage = async () => {
-    await loadUser();
-    await loadEvent();
+  const init = async () => {
+    await Promise.all([
+      loadUser(),
+      loadEvent(),
+    ]);
     await loadRegistration();
     await loadAttendance();
     setLoading(false);
   };
 
-  // ================= USER =================
+  // =====================================================
+  // USER
+  // =====================================================
   const loadUser = async () => {
     const { data } = await supabase.auth.getUser();
     setUser(data.user || null);
   };
 
-  // ================= EVENT =================
+  // =====================================================
+  // EVENT
+  // =====================================================
   const loadEvent = async () => {
     const { data, error } = await supabase
       .from("events")
@@ -45,7 +54,7 @@ export default function EventDetail() {
       .eq("id", id)
       .single();
 
-    if (error) {
+    if (error || !data) {
       toast.error("Event tidak ditemukan");
       navigate("/");
       return;
@@ -54,58 +63,64 @@ export default function EventDetail() {
     setEvent(data);
   };
 
-  // ================= REGISTRATION =================
+  // =====================================================
+  // REGISTRATION
+  // =====================================================
   const loadRegistration = async () => {
-    const { data } = await supabase.auth.getUser();
-    if (!data.user) return;
+    if (!user) return;
 
-    const { data: reg } = await supabase
+    const { data } = await supabase
       .from("event_registrations")
       .select("*")
-      .eq("user_id", data.user.id)
+      .eq("user_id", user.id)
       .eq("event_id", id)
       .maybeSingle();
 
-    setRegistration(reg || null);
+    setRegistration(data || null);
   };
 
-  // ================= ATTENDANCE =================
+  // =====================================================
+  // ATTENDANCE
+  // =====================================================
   const loadAttendance = async () => {
-    const { data } = await supabase.auth.getUser();
-    if (!data.user) return;
+    if (!user) return;
 
-    const { data: ci } = await supabase
-      .from("attendance")
-      .select("*")
-      .eq("user_id", data.user.id)
-      .eq("event_id", id)
-      .eq("type", "checkin")
-      .order("created_at", { ascending: false })
-      .limit(1);
+    const [ci, co] = await Promise.all([
+      supabase
+        .from("attendance")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("event_id", id)
+        .eq("type", "checkin")
+        .order("created_at", { ascending: false })
+        .limit(1),
 
-    const { data: co } = await supabase
-      .from("attendance")
-      .select("*")
-      .eq("user_id", data.user.id)
-      .eq("event_id", id)
-      .eq("type", "checkout")
-      .order("created_at", { ascending: false })
-      .limit(1);
+      supabase
+        .from("attendance")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("event_id", id)
+        .eq("type", "checkout")
+        .order("created_at", { ascending: false })
+        .limit(1),
+    ]);
 
     setAttendance({
-      checkin: ci?.[0] || null,
-      checkout: co?.[0] || null,
+      checkin: ci.data?.[0] || null,
+      checkout: co.data?.[0] || null,
     });
   };
 
-  // ================= REGISTER (FREE) =================
+  // =====================================================
+  // REGISTER FREE EVENT
+  // =====================================================
   const handleRegisterFree = async () => {
     if (!user) return toast.error("Silakan login terlebih dahulu");
 
     const { error } = await supabase.from("event_registrations").insert({
       user_id: user.id,
       event_id: id,
-      payment_status: "paid",
+      payment_status: "paid", // free = langsung paid
     });
 
     if (error) {
@@ -114,35 +129,57 @@ export default function EventDetail() {
     }
 
     toast.success("Berhasil mendaftar event!");
-    loadRegistration();
+    await loadRegistration();
   };
 
-  // ================= PAY (PAID EVENT) =================
+  // =====================================================
+  // PAYMENT (PAID EVENT)
+  // =====================================================
   const handlePayment = async () => {
-    if (!user) return toast.error("Silakan login");
-
-    setLoadingPay(true);
-
-    const { data, error } = await supabase.functions.invoke(
-      "create-payment",
-      {
-        body: {
-          event_id: id,
-          amount: event.price,
-        },
-      }
-    );
-
-    setLoadingPay(false);
-
-    if (error) {
-      toast.error("Gagal membuat pembayaran");
+    if (!user) return toast.error("Silakan login terlebih dahulu");
+    if (!event?.price || event.price <= 0) {
+      toast.error("Harga event tidak valid");
       return;
     }
 
-    window.location.href = data.payment_url;
+    setLoadingPay(true);
+
+    try {
+      console.log("PAYLOAD:", {
+        event_id: id,
+        amount: Number(event.price),
+      });
+
+      const { data, error } = await supabase.functions.invoke(
+        "create-payment",
+        {
+          body: {
+            event_id: id,
+            amount: Number(event.price),
+          },
+        }
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.payment_url) {
+        throw new Error("Payment URL tidak tersedia");
+      }
+
+      window.location.href = data.payment_url;
+    } catch (err) {
+      console.error(err);
+      toast.error("Gagal memulai pembayaran");
+    } finally {
+      setLoadingPay(false);
+    }
   };
 
+  // =====================================================
+  // RENDER
+  // =====================================================
   if (loading || !event) {
     return (
       <div className="py-32 text-center text-slate-500">
@@ -151,7 +188,7 @@ export default function EventDetail() {
     );
   }
 
-  const isPaidEvent = event.price && event.price > 0;
+  const isPaidEvent = Number(event.price) > 0;
   const isRegistered = !!registration;
   const isPaid = registration?.payment_status === "paid";
 
@@ -175,7 +212,7 @@ export default function EventDetail() {
           </h1>
 
           <p className="text-slate-600">
-            {event.date} • {event.start_time} • {event.location}
+            {event.date} • {event.start_time || "-"} • {event.location}
           </p>
 
           {event.description && (
@@ -186,7 +223,7 @@ export default function EventDetail() {
 
           {isPaidEvent && (
             <p className="text-xl font-bold text-green-700">
-              Harga: Rp {event.price.toLocaleString("id-ID")}
+              Harga: Rp {Number(event.price).toLocaleString("id-ID")}
             </p>
           )}
         </div>
@@ -208,6 +245,7 @@ export default function EventDetail() {
         {/* ACTION */}
         <div className="border-t pt-6 space-y-4">
 
+          {/* FREE EVENT */}
           {!isRegistered && !isPaidEvent && (
             <button
               onClick={handleRegisterFree}
@@ -217,6 +255,7 @@ export default function EventDetail() {
             </button>
           )}
 
+          {/* PAID EVENT – FIRST PAYMENT */}
           {!isRegistered && isPaidEvent && (
             <button
               onClick={handlePayment}
@@ -227,6 +266,7 @@ export default function EventDetail() {
             </button>
           )}
 
+          {/* PAID EVENT – RETRY PAYMENT */}
           {isRegistered && !isPaid && isPaidEvent && (
             <button
               onClick={handlePayment}
@@ -237,6 +277,7 @@ export default function EventDetail() {
             </button>
           )}
 
+          {/* AFTER PAID */}
           {isRegistered && isPaid && (
             <div className="flex gap-4">
               <button
