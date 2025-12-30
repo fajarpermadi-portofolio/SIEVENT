@@ -17,14 +17,12 @@ export default function MyCertificates() {
 
     try {
       // =============================
-      // GET USER SESSION
+      // GET SESSION
       // =============================
-      const {
-        data: { session },
-        error: sessionErr,
-      } = await supabase.auth.getSession();
+      const { data: { session }, error } =
+        await supabase.auth.getSession();
 
-      if (sessionErr || !session?.user) {
+      if (error || !session?.user) {
         toast.error("Silakan login terlebih dahulu");
         return;
       }
@@ -32,7 +30,7 @@ export default function MyCertificates() {
       const userId = session.user.id;
 
       // =============================
-      // LOAD USER INFO (NAME & NPM)
+      // USER INFO
       // =============================
       const { data: user, error: userErr } = await supabase
         .from("users")
@@ -44,7 +42,25 @@ export default function MyCertificates() {
       setUserInfo(user);
 
       // =============================
-      // LOAD CERTIFICATES (PAID ONLY)
+      // STEP 1: EVENT YANG SUDAH PAID
+      // =============================
+      const { data: regs, error: regErr } = await supabase
+        .from("event_registrations")
+        .select("event_id")
+        .eq("user_id", userId)
+        .eq("payment_status", "paid");
+
+      if (regErr) throw regErr;
+
+      if (!regs || regs.length === 0) {
+        setCerts([]);
+        return;
+      }
+
+      const eventIds = regs.map(r => r.event_id);
+
+      // =============================
+      // STEP 2: LOAD CERTIFICATES
       // =============================
       const { data: certificates, error: certErr } = await supabase
         .from("certificates")
@@ -55,13 +71,10 @@ export default function MyCertificates() {
           events (
             name,
             date
-          ),
-          event_registrations!inner (
-            payment_status
           )
         `)
         .eq("user_id", userId)
-        .eq("event_registrations.payment_status", "paid")
+        .in("event_id", eventIds)
         .order("created_at", { ascending: false });
 
       if (certErr) throw certErr;
@@ -79,9 +92,9 @@ export default function MyCertificates() {
     <div className="min-h-screen bg-slate-100 px-6 py-20">
       <div className="max-w-6xl mx-auto space-y-12">
 
-        {/* ================= HEADER ================= */}
+        {/* HEADER */}
         <header>
-          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">
+          <h1 className="text-4xl font-extrabold text-slate-900">
             Sertifikat Saya
           </h1>
 
@@ -92,94 +105,57 @@ export default function MyCertificates() {
           )}
         </header>
 
-        {/* ================= LOADING ================= */}
+        {/* LOADING */}
         {loading && (
           <p className="text-slate-500 text-lg">
             Memuat sertifikat Anda...
           </p>
         )}
 
-        {/* ================= EMPTY STATE ================= */}
+        {/* EMPTY */}
         {!loading && certs.length === 0 && (
           <div className="bg-white border rounded-xl p-8 text-center text-slate-500">
             <p className="text-lg font-medium">
               Belum ada sertifikat tersedia
             </p>
             <p className="mt-2 text-sm">
-              Sertifikat akan muncul setelah Anda melakukan check-in,
-              check-out, dan pembayaran lunas (jika berbayar).
+              Sertifikat akan muncul setelah pembayaran lunas dan kehadiran lengkap.
             </p>
           </div>
         )}
 
-        {/* ================= CERTIFICATE LIST ================= */}
+        {/* LIST */}
         {!loading && certs.length > 0 && (
           <section className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
             {certs.map((c) => (
               <div
                 key={c.id}
-                className="
-                  border border-slate-300
-                  rounded-2xl
-                  overflow-hidden
-                  bg-white
-                  hover:shadow-lg
-                  hover:border-slate-400
-                  transition
-                "
+                className="border rounded-2xl overflow-hidden bg-white hover:shadow-lg transition"
               >
-                {/* IMAGE */}
-                <div className="aspect-[4/3] bg-slate-50 flex items-center justify-center">
+                <div className="aspect-[4/3] bg-slate-50">
                   <img
                     src={c.file_url}
                     alt="Sertifikat"
                     className="w-full h-full object-cover"
-                    loading="lazy"
                   />
                 </div>
 
-                {/* INFO */}
                 <div className="p-4 space-y-3">
-                  <p className="font-semibold text-slate-800 line-clamp-2">
-                    {c.events?.name}
-                  </p>
+                  <p className="font-semibold">{c.events?.name}</p>
+                  <p className="text-sm text-slate-500">{c.events?.date}</p>
 
-                  <p className="text-sm text-slate-500">
-                    {c.events?.date}
-                  </p>
-
-                  <div className="flex gap-3 pt-2">
+                  <div className="flex gap-3">
                     <a
                       href={c.file_url}
                       target="_blank"
-                      rel="noreferrer"
-                      className="
-                        flex-1
-                        text-center
-                        py-2
-                        rounded-lg
-                        bg-slate-900
-                        text-white
-                        hover:bg-slate-800
-                        transition
-                      "
+                      className="flex-1 text-center py-2 rounded-lg bg-slate-900 text-white"
                     >
                       Lihat
                     </a>
-
                     <a
                       href={c.file_url}
                       download
-                      className="
-                        flex-1
-                        text-center
-                        py-2
-                        rounded-lg
-                        bg-slate-200
-                        text-slate-800
-                        hover:bg-slate-300
-                        transition
-                      "
+                      className="flex-1 text-center py-2 rounded-lg bg-slate-200"
                     >
                       Download
                     </a>
