@@ -12,16 +12,16 @@ export default function DashboardUser() {
   const [loadingAction, setLoadingAction] = useState(null); // eventId
 
   useEffect(() => {
-    loadUserAndData();
+    init();
   }, []);
 
-  const loadUserAndData = async () => {
+  const init = async () => {
     await loadUser();
     await loadEvents();
   };
 
   // =============================
-  // LOAD USER & REGISTRATIONS
+  // LOAD USER + REGISTRATIONS
   // =============================
   const loadUser = async () => {
     const { data } = await supabase.auth.getUser();
@@ -29,12 +29,13 @@ export default function DashboardUser() {
     setUser(currentUser);
 
     if (currentUser) {
-      const { data: reg } = await supabase
+      // 🔥 HANYA event_registrations (SUDAH PAID / FREE)
+      const { data: regs } = await supabase
         .from("event_registrations")
-        .select("event_id, payment_status")
+        .select("event_id")
         .eq("user_id", currentUser.id);
 
-      setRegistrations(reg || []);
+      setRegistrations(regs || []);
     }
   };
 
@@ -51,7 +52,7 @@ export default function DashboardUser() {
   };
 
   // =============================
-  // FREE EVENT REGISTER
+  // FREE EVENT
   // =============================
   const handleRegisterFree = async (eventId) => {
     if (!user) return toast.error("Harap login terlebih dahulu");
@@ -75,7 +76,7 @@ export default function DashboardUser() {
   };
 
   // =============================
-  // PAID EVENT REGISTER
+  // PAID EVENT
   // =============================
   const handleRegisterPaid = async (eventId) => {
     if (!user) return toast.error("Harap login terlebih dahulu");
@@ -101,11 +102,11 @@ export default function DashboardUser() {
   };
 
   return (
-    <div className="min-h-screen px-3 py-1">
+    <div className="min-h-screen px-4 py-2">
       <div className="max-w-7xl mx-auto">
 
         {/* HEADER */}
-        <header className="mb-4">
+        <header className="mb-6">
           <h1 className="text-5xl font-extrabold tracking-tight text-slate-900">
             Event & Workshop
           </h1>
@@ -117,12 +118,10 @@ export default function DashboardUser() {
         {/* EVENT LIST */}
         <section className="border-t border-slate-300">
           {events.map((ev, index) => {
-            const reg = registrations.find(
+            const isRegistered = registrations.some(
               (r) => r.event_id === ev.id
             );
 
-            const isRegistered = !!reg;
-            const paymentStatus = reg?.payment_status; // paid | pending
             const isPaidEvent = Number(ev.price) > 0;
 
             return (
@@ -174,27 +173,14 @@ export default function DashboardUser() {
                     Lihat Detail / Presensi
                   </button>
 
-                  {/* ✅ SUDAH BAYAR */}
-                  {isRegistered && paymentStatus === "paid" && (
+                  {/* ✅ SUDAH TERDAFTAR */}
+                  {isRegistered && (
                     <div className="border border-green-600 text-green-700 py-2 text-center font-semibold">
                       Sudah Terdaftar
                     </div>
                   )}
 
-                  {/* 🟡 BELUM BAYAR */}
-                  {isRegistered && paymentStatus === "pending" && (
-                    <button
-                      onClick={() => handleRegisterPaid(ev.id)}
-                      disabled={loadingAction === ev.id}
-                      className="bg-yellow-500 text-white py-2 font-semibold hover:bg-yellow-600 disabled:opacity-50"
-                    >
-                      {loadingAction === ev.id
-                        ? "Memproses..."
-                        : "Lanjutkan Pembayaran"}
-                    </button>
-                  )}
-
-                  {/* ❌ BELUM DAFTAR */}
+                  {/* 🟡 EVENT BERBAYAR */}
                   {!isRegistered && isPaidEvent && (
                     <button
                       onClick={() => handleRegisterPaid(ev.id)}
@@ -207,6 +193,7 @@ export default function DashboardUser() {
                     </button>
                   )}
 
+                  {/* 🔵 EVENT GRATIS */}
                   {!isRegistered && !isPaidEvent && (
                     <button
                       onClick={() => handleRegisterFree(ev.id)}
