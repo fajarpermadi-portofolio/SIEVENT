@@ -1,4 +1,3 @@
-// src/pages/AdminEventDetail.jsx
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabase";
@@ -7,6 +6,22 @@ import * as XLSX from "xlsx";
 import { Download } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { generateCertificateForUser } from "../utils/certificateRenderer";
+
+/* ======================
+   HELPER FUNCTIONS
+====================== */
+const hasCheckIn = (uid, checkins) =>
+  checkins.some(c => c.user_id === uid);
+
+const hasCheckOut = (uid, checkouts) =>
+  checkouts.some(c => c.user_id === uid);
+
+const isEligibleForCertificate = (reg, checkins, checkouts, isPaidEvent) => {
+  if (isPaidEvent && reg.payment_status !== "paid") return false;
+  if (!hasCheckIn(reg.user_id, checkins)) return false;
+  if (!hasCheckOut(reg.user_id, checkouts)) return false;
+  return true;
+};
 
 export default function AdminEventDetail() {
   const { id } = useParams();
@@ -19,9 +34,10 @@ export default function AdminEventDetail() {
   const [template, setTemplate] = useState(null);
   const [certificates, setCertificates] = useState([]);
 
-  // ================= LOAD ALL =================
+  /* ======================
+     LOAD ALL DATA
+  ====================== */
   const loadAll = async () => {
-    // EVENT
     const { data: ev } = await supabase
       .from("events")
       .select("*")
@@ -29,31 +45,27 @@ export default function AdminEventDetail() {
       .single();
     setEvent(ev);
 
-    // REGISTRATIONS
     const { data: regs } = await supabase
       .from("event_registrations")
       .select("id, user_id, payment_status, users(name, npm, email)")
       .eq("event_id", id);
-
     setRegistrations(regs || []);
 
-    // ATTENDANCE
-const { data: ci } = await supabase
-  .from("attendance")
-  .select("user_id, timestamp")
-  .eq("event_id", id)
-  .eq("attendance_type", "checkin");
+    const { data: ci } = await supabase
+      .from("attendance")
+      .select("user_id, timestamp")
+      .eq("event_id", id)
+      .eq("attendance_type", "checkin");
 
-const { data: co } = await supabase
-  .from("attendance")
-  .select("user_id, timestamp")
-  .eq("event_id", id)
-  .eq("attendance_type", "checkout");
-
+    const { data: co } = await supabase
+      .from("attendance")
+      .select("user_id, timestamp")
+      .eq("event_id", id)
+      .eq("attendance_type", "checkout");
 
     setCheckins(ci || []);
     setCheckouts(co || []);
-    // TEMPLATE
+
     const { data: tpl } = await supabase
       .from("certificate_templates")
       .select("*")
@@ -61,13 +73,11 @@ const { data: co } = await supabase
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-
     setTemplate(tpl || null);
 
-    // CERTIFICATES (PAID ONLY)
     const paidUserIds = regs
-      ?.filter((r) => r.payment_status === "paid")
-      .map((r) => r.user_id);
+      ?.filter(r => r.payment_status === "paid")
+      .map(r => r.user_id);
 
     const { data: cert } = await supabase
       .from("certificates")
@@ -75,7 +85,7 @@ const { data: co } = await supabase
       .eq("event_id", id);
 
     setCertificates(
-      cert?.filter((c) => paidUserIds?.includes(c.user_id)) || []
+      cert?.filter(c => paidUserIds?.includes(c.user_id)) || []
     );
   };
 
@@ -83,14 +93,21 @@ const { data: co } = await supabase
     loadAll();
   }, [id]);
 
-  // ================= CERTIFICATE =================
+  if (!event) return <p className="p-6">Memuat event...</p>;
+
+  const isPaidEvent = Number(event.price) > 0;
+
+  /* ======================
+     CERTIFICATE ACTIONS
+  ====================== */
   const generateSingle = async (reg) => {
     if (!template) return toast.error("Template sertifikat belum ada");
-    if (reg.payment_status !== "paid")
-      return toast.error("Peserta belum lunas");
 
+    if (!isEligibleForCertificate(reg, checkins, checkouts, isPaidEvent))
+      return toast.error("Peserta belum memenuhi syarat");
+
+    toast.loading("Membuat sertifikat...", { id: "gen" });
     try {
-      toast.loading("Membuat sertifikat...", { id: "gen" });
       await generateCertificateForUser(template, {
         id: reg.user_id,
         name: reg.users?.name,
@@ -99,25 +116,53 @@ const { data: co } = await supabase
         eventName: event.name,
         date: event.date,
       });
-      toast.success("Sertifikat dibuat", { id: "gen" });
+      toast.success("Sertifikat berhasil dibuat", { id: "gen" });
       loadAll();
     } catch (e) {
-      toast.error(e.message, { id: "gen" });
+      toast.error("Gagal generate sertifikat", { id: "gen" });
     }
   };
 
-  // ================= EXCEL =================
+  const generateAllCertificates = async () => {
+    if (!template) return toast.error("Template sertifikat belum tersedia");
+
+    const eligible = registrations.filter(r =>
+      isEligibleForCertificate(r, checkins, checkouts, isPaidEvent)
+    );
+
+    if (eligible.length === 0)
+      return toast.error("Tidak ada peserta yang memenuhi syarat");
+
+    toast.loading(`Membuat ${eligible.length} sertifikat...`, { id: "genall" });
+
+    try {
+      for (const r of eligible) {
+        await generateCertificateForUser(template, {
+          id: r.user_id,
+          name: r.users?.name,
+          npm: r.users?.npm,
+          email: r.users?.email,
+          eventName: event.name,
+          date: event.date,
+        });
+      }
+      toast.success("Semua sertifikat berhasil dibuat", { id: "genall" });
+      loadAll();
+    } catch (err) {
+      toast.error("Gagal generate sertifikat massal", { id: "genall" });
+    }
+  };
+
+  /* ======================
+     EXPORT EXCEL
+  ====================== */
   const downloadExcel = () => {
-    const rows = registrations.map((r) => ({
+    const rows = registrations.map(r => ({
       Nama: r.users?.name,
       NPM: r.users?.npm,
       Email: r.users?.email,
-      CheckIn: checkins.some((c) => c.user_id === r.user_id)
-        ? "Sudah"
-        : "Belum",
-      CheckOut: checkouts.some((c) => c.user_id === r.user_id)
-        ? "Sudah"
-        : "Belum",
+      CheckIn: hasCheckIn(r.user_id, checkins) ? "Sudah" : "Belum",
+      CheckOut: hasCheckOut(r.user_id, checkouts) ? "Sudah" : "Belum",
       Pembayaran: r.payment_status,
     }));
 
@@ -127,9 +172,9 @@ const { data: co } = await supabase
     XLSX.writeFile(book, `Rekap_${event.name}.xlsx`);
   };
 
-  if (!event) return <p className="p-6">Memuat event...</p>;
-
-  // ================= UI =================
+  /* ======================
+     UI
+  ====================== */
   return (
     <div className="min-h-screen bg-slate-100 p-8">
       <div className="max-w-7xl mx-auto space-y-16">
@@ -153,27 +198,32 @@ const { data: co } = await supabase
               <div><b>ID</b><br />{event.id}</div>
             </div>
 
-            <div className="flex gap-3 pt-4">
+            <div className="flex flex-wrap gap-3 pt-4">
               <button
                 onClick={() => navigate(`/admin/dynamicqr/${id}/checkin`)}
-                className="btn"
+                className="px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700"
               >
-                QR Check-In
+                📲 QR Check-In
               </button>
+
               <button
                 onClick={() => navigate(`/admin/dynamicqr/${id}/checkout`)}
-                className="btn"
+                className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700"
               >
-                QR Check-Out
+                🚪 QR Check-Out
               </button>
-              <button onClick={downloadExcel} className="btn-outline">
+
+              <button
+                onClick={downloadExcel}
+                className="px-4 py-2 rounded-lg border border-slate-900 font-semibold hover:bg-slate-900 hover:text-white"
+              >
                 <Download size={16} /> Export Excel
               </button>
             </div>
           </div>
         </section>
 
-        {/* QR STATIK */}
+        {/* QR STATIS */}
         <section className="grid md:grid-cols-2 gap-10 text-center">
           <div>
             <p className="font-semibold mb-2">QR Check-In (Statis)</p>
@@ -187,7 +237,21 @@ const { data: co } = await supabase
 
         {/* REKAP */}
         <section>
-          <h2 className="text-2xl font-bold mb-4">Rekap Peserta</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold">Rekap Peserta</h2>
+            <button
+              onClick={generateAllCertificates}
+              className="px-5 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700"
+            >
+              ⚡ Generate Semua Sertifikat
+            </button>
+          </div>
+
+          <p className="text-sm text-slate-500 mb-4">
+            Sertifikat hanya dibuat untuk peserta yang
+            {isPaidEvent && " sudah bayar dan"} sudah check-in & check-out
+          </p>
+
           <table className="w-full bg-white border">
             <thead className="bg-slate-200">
               <tr>
@@ -200,65 +264,31 @@ const { data: co } = await supabase
               </tr>
             </thead>
             <tbody>
-              {registrations.map((r) => (
+              {registrations.map(r => (
                 <tr key={r.id} className="border-t text-center">
                   <td>{r.users?.name}</td>
                   <td>{r.users?.npm}</td>
-<td className="text-center">
-  {(() => {
-    const ci = checkins.find(c => c.user_id === r.user_id);
-    return ci
-      ? new Date(ci.timestamp).toLocaleString("id-ID")
-      : "—";
-  })()}
-</td>
-
-<td className="text-center">
-  {(() => {
-    const co = checkouts.find(c => c.user_id === r.user_id);
-    return co
-      ? new Date(co.timestamp).toLocaleString("id-ID")
-      : "—";
-  })()}
-</td>
+                  <td>{hasCheckIn(r.user_id, checkins) ? "✔" : "—"}</td>
+                  <td>{hasCheckOut(r.user_id, checkouts) ? "✔" : "—"}</td>
                   <td>{r.payment_status}</td>
                   <td>
-                    <button
-                      onClick={() => generateSingle(r)}
-                      className="underline text-blue-600"
-                    >
-                      Generate
-                    </button>
+                    {isEligibleForCertificate(r, checkins, checkouts, isPaidEvent) ? (
+                      <button
+                        onClick={() => generateSingle(r)}
+                        className="underline text-blue-600"
+                      >
+                        Generate
+                      </button>
+                    ) : (
+                      <span className="text-slate-400 text-sm">
+                        Belum memenuhi
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </section>
-
-        {/* PREVIEW SERTIFIKAT */}
-        <section>
-          <h2 className="text-2xl font-bold mb-4">Preview Sertifikat</h2>
-
-          {certificates.length === 0 && (
-            <p className="text-slate-500">Belum ada sertifikat</p>
-          )}
-
-          <div className="grid md:grid-cols-3 gap-6">
-            {certificates.map((c) => (
-              <div key={c.id} className="border bg-white p-4">
-                <p className="font-semibold text-center mb-2">
-                  {c.users?.name}
-                </p>
-                <img src={c.file_url} className="h-40 w-full object-cover" />
-                <div className="text-center mt-3 text-sm">
-                  <a href={c.file_url} target="_blank" className="underline">
-                    Lihat / Download
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
         </section>
 
       </div>
