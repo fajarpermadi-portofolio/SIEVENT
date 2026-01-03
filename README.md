@@ -1,18 +1,103 @@
-# React + Vite
+# 🎉 SIEVENT — Sistem Informasi Event Berbasis Web
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+SIEVENT adalah platform **manajemen event dan seminar berbasis web** yang mendukung:
+- Registrasi peserta (gratis & berbayar)
+- Pembayaran online (Midtrans Snap)
+- Presensi QR Code (Check-in & Check-out)
+- Manajemen sertifikat otomatis
+- Dashboard Admin & User terpisah
 
-Currently, two official plugins are available:
+Dibangun menggunakan **React + Supabase + Midtrans**, sistem ini cocok untuk:
+kampus, organisasi, komunitas, dan penyelenggara event.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## React Compiler
+## 🚀 Fitur Utama
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 👤 User
+- Registrasi & login
+- Melihat daftar event
+- Daftar event gratis
+- Daftar & bayar event berbayar (Midtrans)
+- Lanjutkan pembayaran (pending)
+- Scan QR Check-in & Check-out
+- Akses sertifikat digital
 
-## Expanding the ESLint configuration
+### 🛠 Admin
+- CRUD Event
+- Generate QR Dinamis (Check-in / Check-out)
+- Rekap kehadiran peserta
+- Export data ke Excel
+- Generate sertifikat (manual & massal)
+- Monitoring pembayaran peserta
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
-"# SIEVENT" 
-"# SIEVENT" 
+### 💳 Pembayaran
+- Midtrans Snap (Sandbox & Production ready)
+- Webhook otomatis
+- Status: `pending`, `paid`, `expired`, `failed`
+- Idempotent & aman
+
+---
+
+## 🧱 Tech Stack
+
+| Layer | Teknologi |
+|-----|----------|
+| Frontend | React + Vite + Tailwind CSS |
+| Backend | Supabase (PostgreSQL + Edge Functions) |
+| Auth | Supabase Auth |
+| Payment | Midtrans Snap |
+| Presensi | QR Code |
+| Deployment | Vercel / Netlify / Supabase |
+
+---
+
+## 🗂 Struktur Database (Ringkas)
+
+### `events`
+- id
+- name
+- date
+- price
+- location
+
+### `event_payments`
+- order_id
+- event_id
+- user_id
+- amount
+- status (`pending`, `paid`, `expired`)
+- payment_method
+
+### `event_registrations`
+- user_id
+- event_id
+- payment_status
+- order_id
+
+### `attendance`
+- user_id
+- event_id
+- attendance_type (`checkin` / `checkout`)
+- timestamp
+
+### `certificates`
+- user_id
+- event_id
+- file_url
+
+---
+
+## 🔄 Alur Pembayaran (Final)
+
+1. User klik **Daftar & Bayar**
+2. `create-payment` Edge Function:
+   - Insert ke `event_payments` (pending)
+   - Redirect ke Midtrans Snap
+3. Midtrans kirim webhook
+4. Webhook:
+   - Update `event_payments.status = paid`
+   - Insert `event_registrations`
+5. User otomatis terdaftar & bisa presensi
+
+---
